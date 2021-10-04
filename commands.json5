@@ -1,0 +1,170 @@
+// Copyright 2021 Squili
+// This program is distributed under the terms of the GNU Affero General Public License
+// You should have received a copy of the license along with this program
+// If not, see <https://www.gnu.org/licenses/#AGPL>
+
+// array of commands
+// discord docs: https://discord.com/developers/docs/interactions/application-commands#application-command-object
+[
+  // manager command - only created in manager guild
+  {
+    type: 1,
+    name: 'makita',
+    description: ' ',
+    options: [
+      {
+        type: 1,
+        name: 'sudo',
+        description: 'Enable sudo mode',
+        options: [],
+      }
+    ]
+  },
+  // general commands
+  {
+    type: 1,
+    name: 'permissions',
+    description: ' ',
+    options: [
+      {
+        type: 1,
+        name: 'list',
+        description: 'List permission entries',
+        options: []
+      },
+      {
+        type: 1,
+        name: 'set',
+        description: 'Set discord permission requirement',
+        options: [
+          {
+            type: 3,
+            name: 'permission',
+            description: 'Target bot permissions',
+            required: true,
+            choices: [
+              { name: 'Administrator', value: 'Administrator' },
+              { name: 'Manage Permissions', value: 'ManagePermissions' },
+              { name: 'Manage Previews', value: 'ManagePreviews' }
+            ]
+          },
+          {
+            type: 4,
+            name: 'bits',
+            description: 'Permission bits to set to',
+            required: true
+          }
+        ]
+      },
+      {
+        type: 1,
+        name: 'add',
+        description: 'Add to permission lists',
+        options: [
+          {
+            type: 3,
+            name: 'permission',
+            description: 'Target bot permissions',
+            required: true,
+            choices: [
+              { name: 'Administrator', value: 'Administrator' },
+              { name: 'Manage Permissions', value: 'ManagePermissions' },
+              { name: 'Manage Previews', value: 'ManagePreviews' }
+            ]
+          },
+          {
+            type: 6,
+            name: 'user',
+            description: 'Target user'
+          },
+          {
+            type: 8,
+            name: 'role',
+            description: 'Target role'
+          }
+        ]
+      },
+      {
+        type: 1,
+        name: 'remove',
+        description: 'Remove from permission lists',
+        options: [
+          {
+            type: 3,
+            name: 'permission',
+            description: 'Target bot permissions',
+            required: true,
+            choices: [
+              { name: 'Administrator', value: 'Administrator' },
+              { name: 'Manage Permissions', value: 'ManagePermissions' },
+              { name: 'Manage Previews', value: 'ManagePreviews' }
+            ]
+          },
+          {
+            type: 6,
+            name: 'user',
+            description: 'Target user'
+          },
+          {
+            type: 8,
+            name: 'role',
+            description: 'Target role'
+          }
+        ]
+      }
+    ]
+  },
+  {
+    type: 1,
+    name: 'previews',
+    description: ' ',
+    options: [
+      {
+        type: 1,
+        name: 'view',
+        description: 'Preview a message',
+        options: [
+          {
+            type: 3,
+            name: 'target',
+            description: 'Link to message',
+            required: true
+          }
+        ]
+      },
+      {
+        type: 1,
+        name: 'add',
+        description: 'Add channel to automatic preview list',
+        options: [
+          {
+            type: 7,
+            name: 'target',
+            description: 'Channel to add',
+            required: true,
+            channel_types: [0, 11, 12]
+          }
+        ]
+      },
+      {
+        type: 1,
+        name: 'remove',
+        description: 'Remove channel from automatic preview list',
+        options: [
+          {
+            type: 7,
+            name: 'target',
+            description: 'Channel to remove',
+            required: true,
+            channel_types: [0, 11, 12]
+          }
+        ]
+      },
+      {
+        type: 1,
+        name: 'list',
+        description: 'List channels in automatic preview list'
+      }
+    ]
+  },
+]
