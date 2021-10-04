@@ -13,7 +13,7 @@ use serenity::model::interactions::message_component::MessageComponentInteractio
 use crate::custom_ids::{parse_custom_id, CustomIdType};
 use crate::modules::PermissionType;
 
-macro_rules! ensure_guild {
+macro ensure_guild {
     ($interaction: expr, $command: expr) => {
         match $interaction.guild_id {
             Some(_) => $command,
@@ -22,7 +22,7 @@ macro_rules! ensure_guild {
     }
 }
 
-macro_rules! ensure_permission_base {
+macro ensure_permission_base {
     ($ctx: expr, $cache: expr, $interaction: expr, $application_id: expr, $permission: path, $command: expr) => {
         ensure_guild!(
             $interaction,
@@ -38,11 +38,11 @@ macro_rules! ensure_permission_base {
                 $command
             }
         )
-    };
+    }
 }
 
 pub async fn chat_input_router(handler: &Handler, ctx: &Context, interaction: &ApplicationCommandInteraction) -> Result<()> {
-    macro_rules! ensure_permission {
+    macro ensure_permission {
         ($permission: path, $command: expr) => {
             ensure_permission_base!(ctx, handler.permissions, interaction, handler.application_id, $permission, $command)
         }
@@ -65,7 +65,7 @@ pub async fn chat_input_router(handler: &Handler, ctx: &Context, interaction: &A
 }
 
 pub async fn component_router(handler: &Handler, ctx: &Context, interaction: &MessageComponentInteraction) -> Result<()> {
-    macro_rules! ensure_permission {
+    macro ensure_permission {
         ($permission: path, $command: expr) => {
             ensure_permission_base!(ctx, handler.permissions, interaction, handler.application_id, $permission, $command)
         }

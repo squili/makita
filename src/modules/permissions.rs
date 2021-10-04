@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::RwLock;
 use sqlx::{PgPool, Row};
 use crate::utils::{SqlId, FollowupBuilder};
-use crate::impl_cache_functions;
+use crate::macros::impl_cache_functions;
 use serenity::client::Context;
 use crate::error::BotError;
 use serenity::model::interactions::application_command::ApplicationCommandInteraction;
@@ -55,7 +55,7 @@ macro_rules! impl_permission_type {
                 builder
             }
         }
-    };
+    }
 }
 
 impl_permission_type!(

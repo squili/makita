@@ -22,7 +22,7 @@ use crate::decode::SlashMap;
 use serenity::model::interactions::application_command::ApplicationCommandInteraction;
 use serenity::model::misc::Mentionable;
 use crate::error::BotError;
-use crate::impl_cache_functions;
+use crate::macros::impl_cache_functions;
 
 pub struct PreviewsModule {
     pool: PgPool,

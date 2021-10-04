@@ -3,8 +3,7 @@
 // You should have received a copy of the license along with this program
 // If not, see <https://www.gnu.org/licenses/#AGPL>
 
-#[macro_export]
-macro_rules! impl_cache_functions {
+pub macro impl_cache_functions {
     ($read_name: ident, $write_name: ident, $write_async_name: ident, $key_type: ty, $value_type: ty, $lock: ident, $default: expr) => {
         #[allow(unused)]
         pub async fn $read_name<F, R>(&self, key: &$key_type, mut func: F) -> R
@@ -55,5 +54,5 @@ macro_rules! impl_cache_functions {
                 }
             }
         }
-    };
+    }
 }

@@ -3,6 +3,8 @@
 // You should have received a copy of the license along with this program
 // If not, see <https://www.gnu.org/licenses/#AGPL>
 
+#![feature(decl_macro)]
+
 mod config;
 mod handler;
 mod logging;
