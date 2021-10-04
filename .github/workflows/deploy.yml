@@ -34,7 +34,7 @@ jobs:
           GIT_REPO: ${{ github.repository }}
         with:
           command: build
-          args: --release
+          args: +nightly --release
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
