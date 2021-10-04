@@ -1,0 +1,42 @@
+name: Deploy
+on:
+  push:
+    tags:
+      - "v*.*.*"
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone
+        uses: actions/checkout@v2
+      - name: Get tag
+        id: tag
+        uses: dawidd6/action-get-tag@v1
+      - name: Cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Init Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+      - name: Build
+        uses: actions-rs/cargo@v1
+        env:
+          GIT_TAG: ${{ steps.tag.outputs.tag }}
+          GIT_COMMIT: ${{ github.sha }}
+          GIT_REPO: ${{ github.repository }}
+        with:
+          command: build
+          args: --release
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: target/release/makita
+          fail_on_unmatched_files: true
