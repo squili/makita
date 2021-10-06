@@ -5,6 +5,8 @@
 
 pub mod permissions;
 pub mod previews;
+pub mod updates;
 
 pub use permissions::*;
 pub use previews::*;
+pub use updates::UpdatesModule;

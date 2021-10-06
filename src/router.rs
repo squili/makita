@@ -7,7 +7,7 @@ use anyhow::{Result, Error};
 use crate::handler::Handler;
 use serenity::client::Context;
 use serenity::model::interactions::application_command::ApplicationCommandInteraction;
-use crate::decode;
+use crate::{decode, modules};
 use crate::error::BotError;
 use serenity::model::interactions::message_component::MessageComponentInteraction;
 use crate::custom_ids::{parse_custom_id, CustomIdType};
@@ -48,10 +48,24 @@ pub async fn chat_input_router(handler: &Handler, ctx: &Context, interaction: &A
         }
     }
 
+    macro ensure_owner {
+        ($command: expr) => {
+            if interaction.user.id == handler.owner_id {
+                $command
+            } else {
+                Err(Error::new(BotError::OwnerOnly(interaction.user.id)))
+            }
+        }
+    }
+
     let (path, args) = decode::process(&interaction.data);
 
     match path.as_str() {
-        "makita sudo" => handler.permissions.makita_sudo(ctx, interaction).await,
+        "info" => handler.updates.info_command(ctx, interaction).await,
+        "makita sudo" => ensure_owner!(handler.permissions.makita_sudo(ctx, interaction).await),
+        "makita checkupdates" => ensure_owner!(handler.updates.check_command(ctx, interaction).await),
+        "makita update" => ensure_owner!(handler.updates.update_command(ctx, interaction).await),
+        "makita restart" => ensure_owner!(handler.updates.restart_command(ctx, interaction).await),
         "permissions list" => ensure_permission!(PermissionType::ManagePermissions, handler.permissions.permissions_list(ctx, interaction).await),
         "permissions set" => ensure_permission!(PermissionType::ManagePermissions, handler.permissions.permissions_set(ctx, interaction, args).await),
         "permissions add" => ensure_permission!(PermissionType::ManagePermissions, handler.permissions.permissions_add(ctx, interaction, args).await),

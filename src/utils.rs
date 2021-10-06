@@ -27,14 +27,13 @@ pub fn default_arg<T, U: Default>(_: T) -> U { U::default() }
 pub struct FollowupBuilder {
     title: Option<String>,
     description: Option<String>,
-    timestamp: Option<Timestamp>,
 }
 
 macro_rules! builder_entry {
     ($ty: ty, $name: ident) => {
         #[allow(unused)]
-        pub fn $name(mut self, $name: $ty) -> Self {
-            self.$name = Some($name);
+        pub fn $name<T: Into<$ty>>(mut self, $name: T) -> Self {
+            self.$name = Some($name.into());
             self
         }
     };
@@ -59,7 +58,6 @@ impl FollowupBuilder {
             m.create_embed(|e| {
                 build_entry!(self, e, title);
                 build_entry!(self, e, description);
-                build_entry!(self, e, timestamp);
                 e
             })
         ).await?;
@@ -73,7 +71,6 @@ impl FollowupBuilder {
             m.create_embed(|e| {
                 build_entry!(self, e, title);
                 build_entry!(self, e, description);
-                build_entry!(self, e, timestamp);
                 e
             })
         ).await?;
@@ -85,9 +82,8 @@ impl FollowupBuilder {
     builder_entry!(String, description);
 }
 
-#[macro_export]
-macro_rules! invite_url {
+pub macro invite_url {
     ($id: expr) => {
         format!("https://discord.com/oauth2/authorize?client_id={}&permissions=8&scope=applications.commands+bot", $id)
-    };
+    }
 }

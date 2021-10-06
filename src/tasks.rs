@@ -13,16 +13,22 @@ use sqlx::{Pool, Postgres, Row};
 use std::future::Future;
 use std::ops::Add;
 use std::sync::Arc;
+use tokio::sync::{mpsc, oneshot};
 use tokio::time::sleep;
 
-pub async fn background_task<C, Fut>(name: &'static str, call: C, wait: Duration)
+pub async fn background_task<C, Fut>(name: &'static str, call: C, wait: Duration, mut kill_rx: mpsc::Receiver<()>)
 where
     C: Fn() -> Fut,
     Fut: Future<Output = Result<()>>,
 {
     let wait = wait.to_std().unwrap();
     loop {
-        sleep(wait).await;
+        if tokio::select! {
+            _ = sleep(wait) => false,
+            _ = kill_rx.recv() => true,
+        } {
+            break
+        }
         if let Err(e) = call().await {
             error!("Error in task {}: {:?}", name, e);
         }

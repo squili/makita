@@ -17,10 +17,34 @@
         name: 'sudo',
         description: 'Enable sudo mode',
         options: [],
+      },
+      {
+        type: 1,
+        name: 'checkupdates',
+        description: 'Check for updates',
+        options: [],
+      },
+      {
+        type: 1,
+        name: 'update',
+        description: 'Update and restart the bot',
+        options: [],
+      },
+      {
+        type: 1,
+        name: 'restart',
+        description: 'Restart the bot',
+        options: [],
       }
     ]
   },
   // general commands
+  {
+    type: 1,
+    name: 'info',
+    description: 'Makita bot info',
+    options: []
+  },
   {
     type: 1,
     name: 'permissions',

@@ -253,7 +253,7 @@ impl PreviewsModule {
             .await?;
 
         FollowupBuilder::new()
-            .description("Success".to_string())
+            .description("Success")
             .build_command(&ctx.http, &interaction)
             .await
     }
@@ -281,7 +281,7 @@ impl PreviewsModule {
             .await?;
 
         FollowupBuilder::new()
-            .description("Success".to_string())
+            .description("Success")
             .build_command(&ctx.http, &interaction)
             .await
     }
@@ -297,7 +297,7 @@ impl PreviewsModule {
 
         if items.len() == 1 {
             return FollowupBuilder::new()
-                .description("No channels".to_string())
+                .description("No channels")
                 .build_command(&ctx.http, interaction)
                 .await;
         }

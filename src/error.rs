@@ -5,17 +5,20 @@
 
 use std::fmt::{Display, Formatter, Debug};
 use std::error::Error as StdError;
+use serenity::model::id::UserId;
+use serenity::model::misc::Mentionable;
 use crate::modules::PermissionType;
 
 pub enum BotError {
     Generic(String),
-    Internal(u64),
+    Internal(u64), // used: 0-12
     GuildOnly,
     Permissions(PermissionType),
     CacheMissing,
     InvalidRequest(String),
     WrongGuild,
     NotFound(String),
+    OwnerOnly(UserId),
 }
 
 impl Display for BotError {
@@ -29,6 +32,7 @@ impl Display for BotError {
             BotError::InvalidRequest(msg) => write!(f, "Invalid request: `{}`", msg),
             BotError::WrongGuild => f.write_str("Can't refer to data from another server"),
             BotError::NotFound(s) => write!(f, "{} not found", s),
+            BotError::OwnerOnly(s) => write!(f, "{} is not in the sudoers file. This incident will be reported.", s.mention())
         }
     }
 }

@@ -201,13 +201,6 @@ impl PermissionsModule {
     }
 
     pub async fn makita_sudo(&self, ctx: &Context, interaction: &ApplicationCommandInteraction) -> Result<()> {
-        if interaction.user.id != self.owner_id {
-            return FollowupBuilder::new()
-                .description(format!("{} is not in the sudoers file. This incident will be reported.", interaction.user.id.mention()))
-                .build_command(&ctx.http, &interaction)
-                .await
-        }
-
         let sudo_enabled = self.sudo_enabled.load(Ordering::Relaxed);
         self.sudo_enabled.store(!sudo_enabled, Ordering::Relaxed);
 
@@ -286,7 +279,7 @@ impl PermissionsModule {
         }.boxed()).await?;
 
         FollowupBuilder::new()
-            .description("Success".to_string())
+            .description("Success")
             .build_command(&ctx.http, &interaction)
             .await
     }
@@ -321,7 +314,7 @@ impl PermissionsModule {
         }.boxed()).await?;
 
         FollowupBuilder::new()
-            .description("Success".to_string())
+            .description("Success")
             .build_command(&ctx.http, &interaction)
             .await
     }
@@ -364,7 +357,7 @@ impl PermissionsModule {
         }
 
         FollowupBuilder::new()
-            .description("Success".to_string())
+            .description("Success")
             .build_command(&ctx.http, &interaction)
             .await
     }

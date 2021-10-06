@@ -10,17 +10,19 @@ use serenity::model::channel::{Message, GuildChannel};
 use serenity::model::gateway::{Activity, Ready};
 use sqlx::{Postgres, Pool};
 use serenity::model::guild::Guild;
-use serenity::model::id::ApplicationId;
+use serenity::model::id::{ApplicationId, UserId};
 use serenity::model::interactions::{Interaction, InteractionResponseType};
 use serenity::model::interactions::application_command::ApplicationCommandType;
 use crate::router;
 use serenity::utils::Color;
 use crate::error::BotError;
-use crate::modules::{PermissionsModule, PreviewsModule};
+use crate::modules::{PermissionsModule, PreviewsModule, UpdatesModule};
 
 pub struct Handler {
     pub pool: Pool<Postgres>,
     pub application_id: ApplicationId,
+    pub owner_id: UserId,
+    pub updates: UpdatesModule,
     pub permissions: PermissionsModule,
     pub previews_module: PreviewsModule,
 }
@@ -77,8 +79,7 @@ impl EventHandler for Handler {
             Interaction::ApplicationCommand(command) => {
                 handler_log!(
                     "Command Deferral",
-                    command.create_interaction_response(&ctx, |r|
-                        r.kind(InteractionResponseType::DeferredChannelMessageWithSource)).await
+                    command.defer(&ctx).await
                 );
                 match match command.data.kind {
                     ApplicationCommandType::ChatInput => router::chat_input_router(&self, &ctx, &command).await,
@@ -101,8 +102,7 @@ impl EventHandler for Handler {
                 }
                 handler_log!(
                     "Component Deferral",
-                    component.create_interaction_response(&ctx, |r|
-                        r.kind(InteractionResponseType::DeferredUpdateMessage)).await
+                    component.defer(&ctx).await
                 );
                 match router::component_router(&self, &ctx, &component).await {
                     Ok(_) => {}
