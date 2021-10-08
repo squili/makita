@@ -81,23 +81,23 @@ pub struct FollowupBuilder {
     description: Option<String>,
 }
 
-macro_rules! builder_entry {
+macro builder_entry {
     ($ty: ty, $name: ident) => {
         #[allow(unused)]
         pub fn $name<T: Into<$ty>>(mut self, $name: T) -> Self {
             self.$name = Some($name.into());
             self
         }
-    };
+    }
 }
 
-macro_rules! build_entry {
+macro build_entry {
     ($self: expr, $builder: expr, $name: ident) => {
         match $self.$name {
             Some(s) => { $builder.$name(s); }
             None => {}
         }
-    };
+    }
 }
 
 impl FollowupBuilder {
@@ -141,10 +141,4 @@ impl FollowupBuilder {
 
     builder_entry!(String, title);
     builder_entry!(String, description);
-}
-
-pub macro invite_url {
-    ($id: expr) => {
-        format!("https://discord.com/oauth2/authorize?client_id={}&permissions=8&scope=applications.commands+bot", $id)
-    }
 }

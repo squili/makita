@@ -13,6 +13,7 @@ use serenity::model::interactions::message_component::MessageComponentInteractio
 use crate::custom_ids::{parse_custom_id, CustomIdType};
 use crate::modules::PermissionType;
 use crate::utils::BotContext;
+use crate::macros::debug;
 
 macro ensure_guild {
     ($interaction: expr, $command: expr) => {
@@ -61,6 +62,8 @@ pub async fn chat_input_router(handler: &Handler, ctx: &BotContext, interaction:
 
     let (path, args) = decode::process(&interaction.data);
 
+    debug!("received command {}", path);
+
     match path.as_str() {
         "info" => handler.updates.info_command(ctx, interaction).await,
         "makita sudo" => ensure_owner!(handler.permissions.makita_sudo(ctx, interaction).await),
@@ -71,10 +74,10 @@ pub async fn chat_input_router(handler: &Handler, ctx: &BotContext, interaction:
         "permissions set" => ensure_permission!(PermissionType::ManagePermissions, handler.permissions.permissions_set(ctx, interaction, args).await),
         "permissions add" => ensure_permission!(PermissionType::ManagePermissions, handler.permissions.permissions_add(ctx, interaction, args).await),
         "permissions remove" => ensure_permission!(PermissionType::ManagePermissions, handler.permissions.permissions_remove(ctx, interaction, args).await),
-        "previews add" => ensure_permission!(PermissionType::ManagePreviews, handler.previews_module.previews_add(ctx, interaction, args).await),
-        "previews remove" => ensure_permission!(PermissionType::ManagePreviews, handler.previews_module.previews_remove(ctx, interaction, args).await),
-        "previews list" => ensure_permission!(PermissionType::ManagePreviews, handler.previews_module.previews_list(ctx, interaction).await),
-        "previews view" => handler.previews_module.previews_view(ctx, interaction, args).await,
+        "previews add" => ensure_permission!(PermissionType::ManagePreviews, handler.previews.previews_add(ctx, interaction, args).await),
+        "previews remove" => ensure_permission!(PermissionType::ManagePreviews, handler.previews.previews_remove(ctx, interaction, args).await),
+        "previews list" => ensure_permission!(PermissionType::ManagePreviews, handler.previews.previews_list(ctx, interaction).await),
+        "previews view" => handler.previews.previews_view(ctx, interaction, args).await,
         _ => Ok(())
     }
 }
@@ -87,6 +90,8 @@ pub async fn component_router(handler: &Handler, ctx: &BotContext, interaction: 
     }
 
     let (ty, _args) = parse_custom_id(&interaction.data.custom_id)?;
+
+    debug!("received component with id {}", interaction.data.custom_id);
 
     use CustomIdType::*;
     match ty {

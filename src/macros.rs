@@ -56,3 +56,17 @@ pub macro impl_cache_functions {
         }
     }
 }
+
+pub macro debug {
+    ($($args: expr),*) => {
+        if cfg!(debug_assertions) {
+            log::debug!($($args),*);
+        }
+    }
+}
+
+pub macro invite_url {
+($id: expr) => {
+        format!("https://discord.com/oauth2/authorize?client_id={}&permissions=8&scope=applications.commands+bot", $id)
+    }
+}

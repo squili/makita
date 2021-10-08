@@ -3,6 +3,7 @@
 // You should have received a copy of the license along with this program
 // If not, see <https://www.gnu.org/licenses/#AGPL>
 
+use std::sync::Arc;
 use log::{info, error};
 use serenity::async_trait;
 use serenity::client::{Context, EventHandler};
@@ -23,9 +24,9 @@ pub struct Handler {
     pub pool: Pool<Postgres>,
     pub application_id: ApplicationId,
     pub owner_id: UserId,
-    pub updates: UpdatesModule,
-    pub permissions: PermissionsModule,
-    pub previews_module: PreviewsModule,
+    pub updates: Arc<UpdatesModule>,
+    pub permissions: Arc<PermissionsModule>,
+    pub previews: Arc<PreviewsModule>,
 }
 
 macro_rules! handler_log {
@@ -49,7 +50,7 @@ impl EventHandler for Handler {
     async fn channel_delete(&self, ctx: Context, channel: &GuildChannel) {
         let b_ctx = BotContext::build(ctx, self.pool.clone());
         tokio::join! {
-            pass_event!("Previews", &self.previews_module, PreviewsModule::channel_delete, &b_ctx, &channel),
+            pass_event!("Previews", &self.previews, PreviewsModule::channel_delete, &b_ctx, &channel),
         };
     }
 
@@ -63,14 +64,14 @@ impl EventHandler for Handler {
                 .await
         );
         tokio::join! {
-            pass_event!("Previews", &self.previews_module, PreviewsModule::guild_data, &b_ctx, &guild),
+            pass_event!("Previews", &self.previews, PreviewsModule::guild_data, &b_ctx, &guild),
         };
     }
 
     async fn message(&self, ctx: Context, message: Message) {
         let b_ctx = BotContext::build(ctx, self.pool.clone());
         tokio::join! {
-            pass_event!("Previews", &self.previews_module, PreviewsModule::message, &b_ctx, &message),
+            pass_event!("Previews", &self.previews, PreviewsModule::message, &b_ctx, &message),
         };
     }
     async fn ready(&self, ctx: Context, _: Ready) {

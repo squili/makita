@@ -7,8 +7,9 @@ use anyhow::{Result, Error};
 use serenity::model::Permissions as DiscordPermissions;
 use serenity::model::id::{RoleId, UserId, GuildId};
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tokio::sync::RwLock;
+use tokio::sync::{broadcast, RwLock};
 use sqlx::{PgPool, Row};
 use crate::utils::{SqlId, FollowupBuilder, BotContext};
 use crate::macros::impl_cache_functions;
@@ -21,6 +22,7 @@ use serenity::model::interactions::message_component::MessageComponentInteractio
 use serenity::model::misc::Mentionable;
 use crate::decode::SlashMap;
 use futures::FutureExt;
+use crate::tasks::TaskMessage;
 
 macro_rules! impl_permission_type {
     ($($enum: ident, $value: expr, $display: expr, $desc: expr),+) => {
@@ -104,7 +106,7 @@ impl PermissionEntry {
     }
 
     // Safety: Must update database yourself
-    unsafe fn raw_set(&mut self, ty: &PermissionType) -> &mut PermissionData {
+    unsafe fn get_mut(&mut self, ty: &PermissionType) -> &mut PermissionData {
         self.data.get_mut(&ty).unwrap()
     }
 
@@ -144,19 +146,32 @@ impl PermissionsModule {
 
     impl_cache_functions!(guild_read, guild_write, write_guild_async, GuildId, PermissionEntry, cache, PermissionEntry::new);
 
-    pub async fn initialize(&self) -> Result<()> {
+    pub async fn initialize(instance: Arc<Self>, mut task_rx: broadcast::Receiver<TaskMessage>) -> Result<()> {
         let rows = sqlx::query("select guild_id, type, overwrites, roles, users from Permissions")
-            .fetch_all(&self.pool)
+            .fetch_all(&instance.pool)
             .await?;
 
         for row in rows {
-            self.guild_write(&row.get::<SqlId<GuildId>, &str>("guild_id").0, |entry| {
-                let mut data = unsafe { entry.raw_set(&row.get::<PermissionType, &str>("type")) };
+            instance.guild_write(&row.get::<SqlId<GuildId>, &str>("guild_id").0, |entry| {
+                let data = unsafe { entry.get_mut(&row.get::<PermissionType, &str>("type")) };
                 data.discord = DiscordPermissions { bits: row.get::<SqlId<u64>, &str>("overwrites").0 };
                 data.roles = row.get::<Vec<i64>, &str>("roles").iter().map(|s| RoleId(*s as u64)).collect::<Vec<RoleId>>();
                 data.users = row.get::<Vec<i64>, &str>("users").iter().map(|s| UserId(*s as u64)).collect::<Vec<UserId>>();
             }).await;
         }
+
+        // task event handling
+        tokio::spawn(async move {
+            loop {
+                let msg = task_rx.recv().await.unwrap();
+                match msg {
+                    TaskMessage::Kill => break,
+                    TaskMessage::DestroyGuild(g) => {
+                        instance.cache.write().await.remove(&g);
+                    }
+                }
+            }
+        });
 
         Ok(())
     }

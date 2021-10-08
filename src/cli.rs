@@ -16,7 +16,7 @@ use ron::extensions::Extensions;
 use ron::ser::PrettyConfig;
 use serenity::http::Http;
 use serenity::model::id::{GuildId, UserId};
-use crate::utils::invite_url;
+use crate::macros::invite_url;
 
 #[derive(Clap)]
 pub struct Opts {

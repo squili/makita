@@ -79,7 +79,7 @@ async fn bootstrap() -> Result<()> {
 }
 
 async fn start() -> Result<()> {
-    logging::init(LevelFilter::Info, LevelFilter::Warn)?;
+    logging::init(if cfg!(debug_assertions) { LevelFilter::Debug } else { LevelFilter::Info }, LevelFilter::Warn)?;
 
     info!("hello world");
 
@@ -105,14 +105,15 @@ async fn start() -> Result<()> {
         pool: pool.clone(),
         application_id: ApplicationId(application_id),
         owner_id: config.owner_id.clone(),
-        updates: modules::UpdatesModule::new(config.owner_id.clone(), shutdown_tx.clone()),
-        permissions: modules::PermissionsModule::new(config.owner_id.clone(), pool.clone()),
-        previews_module: modules::PreviewsModule::new()?,
+        updates: Arc::new(modules::UpdatesModule::new(config.owner_id.clone(), shutdown_tx.clone())),
+        permissions: Arc::new(modules::PermissionsModule::new(config.owner_id.clone(), pool.clone())),
+        previews: Arc::new(modules::PreviewsModule::new()?),
     };
 
     info!("initializing modules");
-    handler.permissions.initialize().await?;
-    handler.previews_module.initialize(&pool).await?;
+    let (task_tx, _) = broadcast::channel(0x400);
+    modules::PermissionsModule::initialize(handler.permissions.clone(), task_tx.subscribe()).await?;
+    modules::PreviewsModule::initialize(handler.previews.clone(), task_tx.subscribe(), &pool).await?;
 
     info!("initializing client");
     let mut client = Client::builder(&config.token)
@@ -155,7 +156,6 @@ async fn start() -> Result<()> {
     }
 
     info!("spawning tasks");
-    let (task_tx, _) = broadcast::channel(0x400);
     let bot_ctx = BotContext::from_cache_and_http(&client.cache_and_http, &pool);
     let task_ctx = TaskContext::from_bot_context(&bot_ctx, &task_tx);
     let task_ctx_clone = task_ctx.clone();

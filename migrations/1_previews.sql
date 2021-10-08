@@ -4,7 +4,7 @@
 -- If not, see <https://www.gnu.org/licenses/#AGPL>
 
 create table PreviewChannels (
-    guild_id    bigint  references Guilds (id),
+    guild_id    bigint  references Guilds (id) on delete cascade,
     channel_id  bigint  unique
 );
 

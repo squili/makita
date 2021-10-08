@@ -15,9 +15,10 @@ use std::sync::Arc;
 use serenity::http::{CacheHttp, Http};
 use tokio::sync::{mpsc, oneshot, broadcast};
 use tokio::time::sleep;
-use crate::utils::BotContext;
+use crate::utils::{BotContext, SqlId};
+use crate::macros::debug;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum TaskMessage {
     Kill,
     DestroyGuild(GuildId),
@@ -74,9 +75,16 @@ where
     loop {
         if tokio::select! {
             _ = sleep(wait) => false,
-            msg = task_rx.recv() => match msg {
-                Kill => true,
-                _ => false,
+            resp = task_rx.recv() => match resp {
+                Ok(msg) =>
+                    match msg {
+                        TaskMessage::Kill => true,
+                        _ => false,
+                    }
+                Err(e) => {
+                    error!("Error in broadcast receive in {}: {:?}", name, e);
+                    true
+                },
             },
         } {
             break
@@ -88,7 +96,7 @@ where
 }
 
 pub async fn guild_cleanup(ctx: TaskContext) -> Result<()> {
-    info!("starting guild cleanup");
+    debug!("starting guild cleanup");
 
     let guilds = ctx.cache.guilds().await;
 
@@ -99,6 +107,7 @@ pub async fn guild_cleanup(ctx: TaskContext) -> Result<()> {
 
     for item in iter {
         if !guilds.contains(&GuildId(item)) {
+            debug!("marking guild {} for cleanup", item);
             sqlx::query("update Guilds set expiration = $1 where id = $2")
                 .bind(Utc::now() + Duration::days(90))
                 .bind(item as i64)
@@ -107,9 +116,13 @@ pub async fn guild_cleanup(ctx: TaskContext) -> Result<()> {
         }
     }
 
-    sqlx::query("delete from Guilds where expiration < now()")
-        .execute(&ctx.pool)
-        .await?;
+    for guild in sqlx::query("delete from Guilds where expiration < now() returning id")
+        .map(|row: PgRow| row.get::<SqlId<GuildId>, &str>("id").0)
+        .fetch_all(&ctx.pool)
+        .await? {
+        debug!("deleting guild {}", guild);
+        ctx.task_tx.send(TaskMessage::DestroyGuild(guild))?;
+    }
 
     Ok(())
 }

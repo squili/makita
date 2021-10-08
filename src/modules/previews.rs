@@ -10,9 +10,10 @@ use serenity::model::channel::{Message, GuildChannel, Attachment};
 use serenity::model::id::{GuildId, ChannelId, MessageId, UserId};
 use sqlx::{PgPool, Row};
 use regex::Regex;
-use tokio::sync::RwLock;
+use tokio::sync::{broadcast, RwLock};
 use std::collections::HashMap;
 use std::str::FromStr;
+use std::sync::Arc;
 use serenity::builder::CreateEmbed;
 use serenity::http::AttachmentType;
 use serenity::model::guild::Guild;
@@ -23,6 +24,7 @@ use serenity::model::interactions::application_command::ApplicationCommandIntera
 use serenity::model::misc::Mentionable;
 use crate::error::BotError;
 use crate::macros::impl_cache_functions;
+use crate::tasks::TaskMessage;
 
 pub struct PreviewsModule {
     link_regex: Regex,
@@ -33,7 +35,7 @@ impl PreviewsModule {
     pub fn new() -> Result<Self> {
         Ok(Self {
             link_regex: Regex::new(r"https://(?:\w+\.)?discord(?:app)?.com/channels/(\d+)/(\d+)/(\d+)")?,
-            cache: Default::default()
+            cache: Default::default(),
         })
     }
 }
@@ -41,29 +43,46 @@ impl PreviewsModule {
 impl PreviewsModule {
     impl_cache_functions!(read_cache, write_cache, write_cache_async, GuildId, Vec<ChannelId>, cache, default_arg);
 
-    pub async fn initialize(&self, pool: &PgPool) -> Result<()> {
-        // load data from db
-        let mut handle = self.cache.write().await;
-        let rows = sqlx::query("select guild_id, channel_id from PreviewChannels")
-            .map(|row: PgRow| {
-                (row.get::<SqlId<GuildId>, &str>("guild_id").0, row.get::<SqlId<ChannelId>, &str>("channel_id").0)
-            })
-            .fetch_all(pool)
-            .await?;
+    pub async fn initialize(instance: Arc<Self>, mut task_rx: broadcast::Receiver<TaskMessage>, pool: &PgPool) -> Result<()> {
+        {
+            // load data from db
+            let mut handle = instance.cache.write().await;
+            let rows = sqlx::query("select guild_id, channel_id from PreviewChannels")
+                .map(|row: PgRow| {
+                    (row.get::<SqlId<GuildId>, &str>("guild_id").0, row.get::<SqlId<ChannelId>, &str>("channel_id").0)
+                })
+                .fetch_all(pool)
+                .await?;
 
-        for row in rows {
-            match handle.get_mut(&row.0) {
-                Some(s) => {
-                    s.push(row.1);
-                }
-                None => {
-                    handle.insert(row.0, vec![row.1]);
+            for row in rows {
+                match handle.get_mut(&row.0) {
+                    Some(s) => {
+                        s.push(row.1);
+                    }
+                    None => {
+                        handle.insert(row.0, vec![row.1]);
+                    }
                 }
             }
         }
 
+        // task event handling
+        tokio::spawn(async move {
+            loop {
+                let msg = task_rx.recv().await.unwrap();
+                match msg {
+                    TaskMessage::Kill => break,
+                    TaskMessage::DestroyGuild(g) => {
+                        instance.cache.write().await.remove(&g);
+                    }
+                }
+            }
+        });
+
         Ok(())
     }
+
+    async fn task_event_handling(&self) {}
 
     async fn preview(&self, ctx: &BotContext, original: &str, from_user: &UserId, from_guild: &Option<GuildId>,
                      guild: GuildId, channel: ChannelId, message: MessageId) -> Result<(Vec<CreateEmbed>, Vec<Attachment>)> {

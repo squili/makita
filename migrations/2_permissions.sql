@@ -6,7 +6,7 @@
 create type PermissionType as enum ('Administrator', 'ManagePermissions', 'ManagePreviews');
 
 create table Permissions (
-    guild_id    bigint          references Guilds (id),
+    guild_id    bigint          references Guilds (id) on delete cascade,
     type        PermissionType  not null,
     overwrites  bigint          not null,
     roles       bigint[]        not null,
