@@ -130,7 +130,7 @@ impl PreviewsModule {
                             match embed.description {
                                 Some(description) => builder.description(description),
                                 None => builder.description(" "),
-                            }
+                            };
                             if let Some(url) = &embed.url { builder.url(url); }
                             if let Some(timestamp) = &embed.timestamp { builder.timestamp(timestamp.clone()); }
                             if let Some(image) = embed.image { builder.image(image.url); };
