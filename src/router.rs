@@ -12,6 +12,7 @@ use crate::error::BotError;
 use serenity::model::interactions::message_component::MessageComponentInteraction;
 use crate::custom_ids::{parse_custom_id, CustomIdType};
 use crate::modules::PermissionType;
+use crate::utils::BotContext;
 
 macro ensure_guild {
     ($interaction: expr, $command: expr) => {
@@ -41,7 +42,7 @@ macro ensure_permission_base {
     }
 }
 
-pub async fn chat_input_router(handler: &Handler, ctx: &Context, interaction: &ApplicationCommandInteraction) -> Result<()> {
+pub async fn chat_input_router(handler: &Handler, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
     macro ensure_permission {
         ($permission: path, $command: expr) => {
             ensure_permission_base!(ctx, handler.permissions, interaction, handler.application_id, $permission, $command)
@@ -78,7 +79,7 @@ pub async fn chat_input_router(handler: &Handler, ctx: &Context, interaction: &A
     }
 }
 
-pub async fn component_router(handler: &Handler, ctx: &Context, interaction: &MessageComponentInteraction) -> Result<()> {
+pub async fn component_router(handler: &Handler, ctx: &BotContext, interaction: &MessageComponentInteraction) -> Result<()> {
     macro ensure_permission {
         ($permission: path, $command: expr) => {
             ensure_permission_base!(ctx, handler.permissions, interaction, handler.application_id, $permission, $command)
@@ -93,5 +94,5 @@ pub async fn component_router(handler: &Handler, ctx: &Context, interaction: &Me
     }
 }
 
-pub async fn user_router(_handler: &Handler, _ctx: &Context, _command: &ApplicationCommandInteraction) -> Result<()> { Ok(()) }
-pub async fn message_router(_handler: &Handler, _ctx: &Context, _command: &ApplicationCommandInteraction) -> Result<()> { Ok(()) }
+pub async fn user_router(_handler: &Handler, _ctx: &BotContext, _command: &ApplicationCommandInteraction) -> Result<()> { Ok(()) }
+pub async fn message_router(_handler: &Handler, _ctx: &BotContext, _command: &ApplicationCommandInteraction) -> Result<()> { Ok(()) }

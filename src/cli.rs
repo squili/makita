@@ -14,7 +14,9 @@ use ring::rand::SystemRandom;
 use ring::signature::Ed25519KeyPair;
 use ron::extensions::Extensions;
 use ron::ser::PrettyConfig;
+use serenity::http::Http;
 use serenity::model::id::{GuildId, UserId};
+use crate::utils::invite_url;
 
 #[derive(Clap)]
 pub struct Opts {
@@ -26,6 +28,13 @@ pub struct Opts {
 pub enum Subcommand {
     Run,
     Init,
+    Invite(InviteOpts),
+}
+
+#[derive(Clap)]
+pub struct InviteOpts {
+    #[clap(short = 'i')]
+    id: Option<u64>,
 }
 
 pub fn init() -> Result<()> {
@@ -66,6 +75,22 @@ pub fn init() -> Result<()> {
 
     let document = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new())?;
     fs::write("key.der", document.as_ref())?;
+
+    Ok(())
+}
+
+pub async fn invite(opts: InviteOpts) -> Result<()> {
+    match opts.id {
+        Some(id) => invite_inner(id),
+        None => {
+            let config: Config = ron::from_str(&*fs::read_to_string("config.ron")?)?;
+            invite_inner(Http::new_with_token(&config.token).get_current_user().await?.id.0)
+        }
+    }
+}
+
+pub fn invite_inner(id: u64) -> Result<()> {
+    println!("Invite link: {}", invite_url!(id));
 
     Ok(())
 }

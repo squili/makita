@@ -35,7 +35,7 @@ use std::process::Command;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use async_ctrlc::CtrlC;
-use crate::tasks::background_task;
+use crate::tasks::{background_task, TaskContext, TaskMessage};
 use chrono::Duration;
 use serenity::model::interactions::application_command::ApplicationCommand;
 use serenity::http::request::RequestBuilder;
@@ -43,9 +43,10 @@ use serenity::http::routing::RouteInfo;
 use crate::cli::{Opts, Subcommand};
 use clap::Clap;
 use serenity::model::id::ApplicationId;
-use tokio::sync::mpsc;
+use tokio::sync::{broadcast, mpsc};
 use crate::modules::updates;
 use crate::modules::updates::RESTARTING;
+use crate::utils::BotContext;
 
 fn main() -> Result<()> {
     let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -73,6 +74,7 @@ async fn bootstrap() -> Result<()> {
     match opts.subcommand {
         Subcommand::Run => start().await,
         Subcommand::Init => cli::init(),
+        Subcommand::Invite(opts) => cli::invite(opts).await,
     }
 }
 
@@ -105,12 +107,12 @@ async fn start() -> Result<()> {
         owner_id: config.owner_id.clone(),
         updates: modules::UpdatesModule::new(config.owner_id.clone(), shutdown_tx.clone()),
         permissions: modules::PermissionsModule::new(config.owner_id.clone(), pool.clone()),
-        previews_module: modules::PreviewsModule::new(pool.clone())?,
+        previews_module: modules::PreviewsModule::new()?,
     };
 
     info!("initializing modules");
     handler.permissions.initialize().await?;
-    handler.previews_module.initialize().await?;
+    handler.previews_module.initialize(&pool).await?;
 
     info!("initializing client");
     let mut client = Client::builder(&config.token)
@@ -153,15 +155,12 @@ async fn start() -> Result<()> {
     }
 
     info!("spawning tasks");
-    let cache_clone = client.cache_and_http.cache.clone();
-    let pool_clone = pool.clone();
-    let mut kill_channels = Vec::new();
-    let (guild_cleanup_tx, guild_cleanup_rx) = mpsc::channel(1);
-    kill_channels.push(guild_cleanup_tx);
-    tokio::spawn(async {
-        background_task("Guild Cleanup", move || {
-            tasks::guild_cleanup(cache_clone.clone(), pool_clone.clone())
-        }, Duration::days(1), guild_cleanup_rx).await;
+    let (task_tx, _) = broadcast::channel(0x400);
+    let bot_ctx = BotContext::from_cache_and_http(&client.cache_and_http, &pool);
+    let task_ctx = TaskContext::from_bot_context(&bot_ctx, &task_tx);
+    let task_ctx_clone = task_ctx.clone();
+    tokio::spawn(async move {
+        background_task("Guild Cleanup", |ctx| tasks::guild_cleanup(ctx.clone()), task_ctx_clone, Duration::days(1)).await;
     });
 
     info!("starting client");
@@ -181,10 +180,7 @@ async fn start() -> Result<()> {
 
     shutdown_rx.recv().await; // wait for shutdown
     shard_manager.lock().await.shutdown_all().await; // shutdown gateway connection
-    // shutdown tasks
-    for channel in kill_channels {
-        channel.send(()).await?;
-    }
+    task_tx.send(TaskMessage::Kill); // shutdown tasks
 
     Ok(())
 }

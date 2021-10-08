@@ -3,11 +3,63 @@
 // You should have received a copy of the license along with this program
 // If not, see <https://www.gnu.org/licenses/#AGPL>
 
+use std::sync::Arc;
 use serenity::builder::Timestamp;
 use anyhow::Result;
-use serenity::http::Http;
+use serenity::cache::Cache;
+use serenity::{CacheAndHttp, Client};
+use serenity::client::Context;
+use serenity::http::{CacheHttp, Http};
 use serenity::model::interactions::application_command::ApplicationCommandInteraction;
 use serenity::model::interactions::message_component::MessageComponentInteraction;
+use sqlx::PgPool;
+
+#[derive(Clone)]
+pub struct BotContext {
+    pub http: Arc<Http>,
+    pub cache: Arc<Cache>,
+    pub pool: PgPool,
+}
+
+impl BotContext {
+    pub fn build(ctx: Context, pool: PgPool) -> Self {
+        Self {
+            http: ctx.http,
+            cache: ctx.cache,
+            pool,
+        }
+    }
+
+    pub fn from_cache_and_http(cah: &Arc<CacheAndHttp>, pool: &PgPool) -> Self {
+        Self {
+            http: cah.http.clone(),
+            cache: cah.cache.clone(),
+            pool: pool.clone()
+        }
+    }
+}
+
+impl AsRef<Http> for BotContext {
+    fn as_ref(&self) -> &Http {
+        &self.http
+    }
+}
+
+impl AsRef<Cache> for BotContext {
+    fn as_ref(&self) -> &Cache {
+        &self.cache
+    }
+}
+
+impl CacheHttp for BotContext {
+    fn http(&self) -> &Http {
+        &self.http
+    }
+
+    fn cache(&self) -> Option<&Arc<Cache>> {
+        Some(&self.cache)
+    }
+}
 
 pub fn remove_indexes<T>(vector: &mut Vec<T>, indexes: &Vec<usize>) -> Vec<T> {
     let mut offset = 0;
@@ -53,7 +105,11 @@ impl FollowupBuilder {
         Default::default()
     }
 
-    pub async fn build_command(self, http: &Http, interaction: &ApplicationCommandInteraction) -> Result<()> {
+    pub async fn build_command<T: AsRef<Http>>(self, http: T, interaction: &ApplicationCommandInteraction) -> Result<()> {
+        self._build_command(http.as_ref(), interaction).await
+    }
+
+    async fn _build_command(self, http: &Http, interaction: &ApplicationCommandInteraction) -> Result<()> {
         interaction.create_followup_message(&http, |m|
             m.create_embed(|e| {
                 build_entry!(self, e, title);
@@ -66,7 +122,12 @@ impl FollowupBuilder {
     }
 
     #[allow(unused)]
-    pub async fn build_component(self, http: &Http, interaction: &MessageComponentInteraction) -> Result<()> {
+    pub async fn build_component<T: AsRef<Http>>(self, http: T, interaction: &MessageComponentInteraction) -> Result<()> {
+        self._build_component(http.as_ref(), interaction).await
+    }
+
+    #[allow(unused)]
+    async fn _build_component(self, http: &Http, interaction: &MessageComponentInteraction) -> Result<()> {
         interaction.create_followup_message(&http, |m|
             m.create_embed(|e| {
                 build_entry!(self, e, title);

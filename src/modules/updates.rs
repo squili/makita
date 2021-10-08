@@ -15,7 +15,7 @@ use serenity::model::misc::Mentionable;
 use tokio::sync::mpsc;
 use tokio::fs;
 use crate::error::BotError;
-use crate::utils::{FollowupBuilder, invite_url};
+use crate::utils::{BotContext, FollowupBuilder, invite_url};
 
 pub struct GitMeta {
     tag: &'static str,
@@ -32,8 +32,8 @@ const fn init_git_data() -> Option<GitMeta> {
             option_env!("GIT_REPO"),
         ) {
         (Some(tag), Some(commit), Some(repo)) => Some(GitMeta { tag, commit, repo }),
-        // _ => None,
-        _ => Some(GitMeta { tag: "v0.0.3", commit: "527172db45764ecd53c39d0cab39db8b983b9e53", repo: "squili/makita" }),
+        _ => None,
+        // _ => Some(GitMeta { tag: "v0.0.0", commit: "1234567", repo: "squili/makita" }), // kept here for local update testing
     }
 }
 
@@ -100,7 +100,7 @@ impl UpdatesModule {
         Self { owner_id, shutdown_tx }
     }
 
-    pub async fn info_command(&self, ctx: &Context, interaction: &ApplicationCommandInteraction) -> Result<()> {
+    pub async fn info_command(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
         interaction.create_followup_message(&ctx, |builder| {
             builder.create_embed(|embed| {
                 embed
@@ -119,7 +119,7 @@ impl UpdatesModule {
         Ok(())
     }
 
-    pub async fn check_command(&self, ctx: &Context, interaction: &ApplicationCommandInteraction) -> Result<()> {
+    pub async fn check_command(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
         let msg = match check_update().await? {
             Some(update) => format!("Update available from `{}` to `{}`", update.old_version, update.new_version),
             None => "No updates found".to_string()
@@ -130,7 +130,7 @@ impl UpdatesModule {
             .build_command(&ctx.http, &interaction)
             .await
     }
-    pub async fn update_command(&self, ctx: &Context, interaction: &ApplicationCommandInteraction) -> Result<()> {
+    pub async fn update_command(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
         do_update().await?;
 
         RESTARTING.store(true, Ordering::SeqCst);
@@ -142,7 +142,7 @@ impl UpdatesModule {
             .await
     }
 
-    pub async fn restart_command(&self, ctx: &Context, interaction: &ApplicationCommandInteraction) -> Result<()> {
+    pub async fn restart_command(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
         RESTARTING.store(true, Ordering::SeqCst);
         self.shutdown_tx.send(()).await?;
 

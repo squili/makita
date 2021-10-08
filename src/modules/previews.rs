@@ -16,7 +16,7 @@ use std::str::FromStr;
 use serenity::builder::CreateEmbed;
 use serenity::http::AttachmentType;
 use serenity::model::guild::Guild;
-use crate::utils::{remove_indexes, SqlId, default_arg, FollowupBuilder};
+use crate::utils::{remove_indexes, SqlId, default_arg, FollowupBuilder, BotContext};
 use sqlx::postgres::PgRow;
 use crate::decode::SlashMap;
 use serenity::model::interactions::application_command::ApplicationCommandInteraction;
@@ -25,15 +25,13 @@ use crate::error::BotError;
 use crate::macros::impl_cache_functions;
 
 pub struct PreviewsModule {
-    pool: PgPool,
     link_regex: Regex,
     cache: RwLock<HashMap<GuildId, Vec<ChannelId>>>,
 }
 
 impl PreviewsModule {
-    pub fn new(pool: PgPool) -> Result<Self> {
+    pub fn new() -> Result<Self> {
         Ok(Self {
-            pool,
             link_regex: Regex::new(r"https://(?:\w+\.)?discord(?:app)?.com/channels/(\d+)/(\d+)/(\d+)")?,
             cache: Default::default()
         })
@@ -43,14 +41,14 @@ impl PreviewsModule {
 impl PreviewsModule {
     impl_cache_functions!(read_cache, write_cache, write_cache_async, GuildId, Vec<ChannelId>, cache, default_arg);
 
-    pub async fn initialize(&self) -> Result<()> {
+    pub async fn initialize(&self, pool: &PgPool) -> Result<()> {
         // load data from db
         let mut handle = self.cache.write().await;
         let rows = sqlx::query("select guild_id, channel_id from PreviewChannels")
             .map(|row: PgRow| {
                 (row.get::<SqlId<GuildId>, &str>("guild_id").0, row.get::<SqlId<ChannelId>, &str>("channel_id").0)
             })
-            .fetch_all(&self.pool)
+            .fetch_all(pool)
             .await?;
 
         for row in rows {
@@ -67,7 +65,7 @@ impl PreviewsModule {
         Ok(())
     }
 
-    async fn preview(&self, ctx: &Context, original: &str, from_user: &UserId, from_guild: &Option<GuildId>,
+    async fn preview(&self, ctx: &BotContext, original: &str, from_user: &UserId, from_guild: &Option<GuildId>,
                      guild: GuildId, channel: ChannelId, message: MessageId) -> Result<(Vec<CreateEmbed>, Vec<Attachment>)> {
         match ctx.cache.guild(&guild).await {
             None => Err(Error::new(BotError::NotFound("Server".to_string()))),
@@ -143,7 +141,7 @@ impl PreviewsModule {
         }
     }
 
-    pub async fn message(&self, ctx: &Context, message: &Message) -> Result<()> {
+    pub async fn message(&self, ctx: &BotContext, message: &Message) -> Result<()> {
         // ignore dms
         if matches!(message.guild_id, None) {
             return Ok(());
@@ -188,7 +186,7 @@ impl PreviewsModule {
         Ok(())
     }
 
-    pub async fn guild_data(&self, guild: &Guild) -> Result<()> {
+    pub async fn guild_data(&self, ctx: &BotContext, guild: &Guild) -> Result<()> {
         // remove invalid channels
         let entries = self.write_cache(&guild.id, |cached: &mut Vec<ChannelId>| {
             let mut indexes = Vec::new();
@@ -204,13 +202,13 @@ impl PreviewsModule {
             sqlx::query("delete from PreviewChannels where guild_id = $1 and channel_id = $2")
                 .bind(guild.id.0 as i64)
                 .bind(entry.0 as i64)
-                .execute(&self.pool)
+                .execute(&ctx.pool)
                 .await?;
         }
         Ok(())
     }
 
-    pub async fn channel_delete(&self, channel: &GuildChannel) -> Result<()> {
+    pub async fn channel_delete(&self, ctx: &BotContext, channel: &GuildChannel) -> Result<()> {
         // remove invalid channel
         let remove = self.read_cache(&channel.guild_id, |cached: &Vec<ChannelId>| {
             cached.binary_search(&channel.id).ok()
@@ -223,7 +221,7 @@ impl PreviewsModule {
                 sqlx::query("delete from PreviewChannels where guild_id = $1 and channel_id = $2")
                     .bind(SqlId(channel.guild_id))
                     .bind(SqlId(channel.id))
-                    .execute(&self.pool)
+                    .execute(&ctx.pool)
                     .await?;
             }
             None => {}
@@ -231,7 +229,7 @@ impl PreviewsModule {
         Ok(())
     }
 
-    pub async fn previews_add(&self, ctx: &Context, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
+    pub async fn previews_add(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
         let target = args.get_channel("target")?;
         let guild_id = interaction.guild_id.ok_or(BotError::GuildOnly)?;
 
@@ -249,7 +247,7 @@ impl PreviewsModule {
         sqlx::query("insert into PreviewChannels (guild_id, channel_id) values ($1, $2) on conflict do nothing")
             .bind(SqlId(guild_id))
             .bind(SqlId(target.id))
-            .execute(&self.pool)
+            .execute(&ctx.pool)
             .await?;
 
         FollowupBuilder::new()
@@ -258,7 +256,7 @@ impl PreviewsModule {
             .await
     }
 
-    pub async fn previews_remove(&self, ctx: &Context, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
+    pub async fn previews_remove(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
         let target = args.get_channel("target")?;
         let guild_id = interaction.guild_id.ok_or(BotError::GuildOnly)?;
 
@@ -277,7 +275,7 @@ impl PreviewsModule {
         sqlx::query("delete from PreviewChannels where guild_id = $1 and channel_id = $2")
             .bind(SqlId(guild_id))
             .bind(SqlId(target.id))
-            .execute(&self.pool)
+            .execute(&ctx.pool)
             .await?;
 
         FollowupBuilder::new()
@@ -286,7 +284,7 @@ impl PreviewsModule {
             .await
     }
 
-    pub async fn previews_list(&self, ctx: &Context, interaction: &ApplicationCommandInteraction) -> Result<()> {
+    pub async fn previews_list(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
         let mut items = vec!["**Channels**".to_string()];
 
         self.read_cache(&interaction.guild_id.ok_or(BotError::GuildOnly)?, |data| {
@@ -308,7 +306,7 @@ impl PreviewsModule {
             .await
     }
 
-    pub async fn previews_view(&self, ctx: &Context, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
+    pub async fn previews_view(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
         let target = args.get_string("target")?;
 
         let captures = self.link_regex.captures(&target).ok_or(BotError::Generic("Malformed link".to_string()))?;

@@ -17,6 +17,7 @@ use crate::router;
 use serenity::utils::Color;
 use crate::error::BotError;
 use crate::modules::{PermissionsModule, PreviewsModule, UpdatesModule};
+use crate::utils::BotContext;
 
 pub struct Handler {
     pub pool: Pool<Postgres>,
@@ -45,13 +46,15 @@ macro_rules! pass_event {
 
 #[async_trait]
 impl EventHandler for Handler {
-    async fn channel_delete(&self, _: Context, channel: &GuildChannel) {
+    async fn channel_delete(&self, ctx: Context, channel: &GuildChannel) {
+        let b_ctx = BotContext::build(ctx, self.pool.clone());
         tokio::join! {
-            pass_event!("Previews", &self.previews_module, PreviewsModule::channel_delete, &channel),
+            pass_event!("Previews", &self.previews_module, PreviewsModule::channel_delete, &b_ctx, &channel),
         };
     }
 
-    async fn guild_create(&self, _: Context, guild: Guild, _: bool) {
+    async fn guild_create(&self, ctx: Context, guild: Guild, _: bool) {
+        let b_ctx = BotContext::build(ctx, self.pool.clone());
         handler_log!(
             format!("Guild Create Event ID {}", guild.id),
             sqlx::query("insert into Guilds (id) values ($1) on conflict on constraint id_unique do update set expiration = null")
@@ -60,13 +63,14 @@ impl EventHandler for Handler {
                 .await
         );
         tokio::join! {
-            pass_event!("Previews", &self.previews_module, PreviewsModule::guild_data, &guild),
+            pass_event!("Previews", &self.previews_module, PreviewsModule::guild_data, &b_ctx, &guild),
         };
     }
 
     async fn message(&self, ctx: Context, message: Message) {
+        let b_ctx = BotContext::build(ctx, self.pool.clone());
         tokio::join! {
-            pass_event!("Previews", &self.previews_module, PreviewsModule::message, &ctx, &message),
+            pass_event!("Previews", &self.previews_module, PreviewsModule::message, &b_ctx, &message),
         };
     }
     async fn ready(&self, ctx: Context, _: Ready) {
@@ -75,23 +79,24 @@ impl EventHandler for Handler {
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
+        let b_ctx = BotContext::build(ctx, self.pool.clone());
         match interaction {
             Interaction::ApplicationCommand(command) => {
                 handler_log!(
                     "Command Deferral",
-                    command.defer(&ctx).await
+                    command.defer(&b_ctx).await
                 );
                 match match command.data.kind {
-                    ApplicationCommandType::ChatInput => router::chat_input_router(&self, &ctx, &command).await,
-                    ApplicationCommandType::User => router::user_router(&self, &ctx, &command).await,
-                    ApplicationCommandType::Message => router::message_router(&self, &ctx, &command).await,
+                    ApplicationCommandType::ChatInput => router::chat_input_router(&self, &b_ctx, &command).await,
+                    ApplicationCommandType::User => router::user_router(&self, &b_ctx, &command).await,
+                    ApplicationCommandType::Message => router::message_router(&self, &b_ctx, &command).await,
                     _ => Ok(()),
                 } {
                     Ok(_) => {}
                     Err(err) =>
                         handler_log!(
                             "Command Error Response",
-                            command.create_followup_message(&ctx, |f|
+                            command.create_followup_message(&b_ctx, |f|
                                 f.create_embed(|e|
                                     e.description(format!("{}{}", if err.is::<BotError>() {""} else {"Internal error: "}, err)).color(Color::RED))).await)
                 }
@@ -102,14 +107,14 @@ impl EventHandler for Handler {
                 }
                 handler_log!(
                     "Component Deferral",
-                    component.defer(&ctx).await
+                    component.defer(&b_ctx).await
                 );
-                match router::component_router(&self, &ctx, &component).await {
+                match router::component_router(&self, &b_ctx, &component).await {
                     Ok(_) => {}
                     Err(err) =>
                         handler_log!(
                             "Message Component Error Response",
-                            component.edit_original_interaction_response(&ctx, |r|
+                            component.edit_original_interaction_response(&b_ctx, |r|
                                 r.content("").create_embed(|e|
                                     e.description(format!("{}{}", if err.is::<BotError>() {""} else {"Internal error: "}, err)).color(Color::RED))).await)
                 }

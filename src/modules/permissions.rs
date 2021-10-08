@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::RwLock;
 use sqlx::{PgPool, Row};
-use crate::utils::{SqlId, FollowupBuilder};
+use crate::utils::{SqlId, FollowupBuilder, BotContext};
 use crate::macros::impl_cache_functions;
 use serenity::client::Context;
 use crate::error::BotError;
@@ -172,7 +172,7 @@ impl PermissionsModule {
         }
     }
 
-    pub async fn check<'a>(&self, ctx: &Context, ty: &'a PermissionType, guild: &GuildId, user: &UserId, roles: &Vec<RoleId>) -> Result<Option<&'a PermissionType>> {
+    pub async fn check<'a>(&self, ctx: &BotContext, ty: &'a PermissionType, guild: &GuildId, user: &UserId, roles: &Vec<RoleId>) -> Result<Option<&'a PermissionType>> {
         if self.sudo_enabled.load(Ordering::Relaxed) && user == &self.owner_id {
               return Ok(None)
         }
@@ -200,7 +200,7 @@ impl PermissionsModule {
         }).await
     }
 
-    pub async fn makita_sudo(&self, ctx: &Context, interaction: &ApplicationCommandInteraction) -> Result<()> {
+    pub async fn makita_sudo(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
         let sudo_enabled = self.sudo_enabled.load(Ordering::Relaxed);
         self.sudo_enabled.store(!sudo_enabled, Ordering::Relaxed);
 
@@ -210,7 +210,7 @@ impl PermissionsModule {
             .await
     }
 
-    pub async fn permissions_list(&self, ctx: &Context, interaction: &ApplicationCommandInteraction) -> Result<()> {
+    pub async fn permissions_list(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
         interaction.create_followup_message(&ctx.http, |a|
             a.components(|b|
                 b.create_action_row(|c|
@@ -229,7 +229,7 @@ impl PermissionsModule {
         Ok(())
     }
 
-    pub async fn permissions_list_component(&self, ctx: &Context, interaction: &MessageComponentInteraction) -> Result<()> {
+    pub async fn permissions_list_component(&self, ctx: &BotContext, interaction: &MessageComponentInteraction) -> Result<()> {
         let ty = PermissionType::from_string(
             interaction.data.values.get(0).ok_or(BotError::InvalidRequest("Missing component values".to_string()))?)?;
 
@@ -267,7 +267,7 @@ impl PermissionsModule {
         Ok(())
     }
 
-    pub async fn permissions_set(&self, ctx: &Context, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
+    pub async fn permissions_set(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
         let ty = PermissionType::from_string(&args.get_string("permission")?)?;
         let permissions = DiscordPermissions::from_bits(args.get_integer("bits")? as u64)
             .ok_or(BotError::InvalidRequest("Invalid permissions bits".to_string()))?;
@@ -284,7 +284,7 @@ impl PermissionsModule {
             .await
     }
 
-    pub async fn permissions_add(&self, ctx: &Context, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
+    pub async fn permissions_add(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
         let ty = PermissionType::from_string(&args.get_string("permission")?)?;
         let user = args.get_user("user").map(|s| s.get_user().id).ok();
         let role_object = args.get_role("role").ok();
@@ -319,7 +319,7 @@ impl PermissionsModule {
             .await
     }
 
-    pub async fn permissions_remove(&self, ctx: &Context, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
+    pub async fn permissions_remove(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
         let ty = PermissionType::from_string(&args.get_string("permission")?)?;
         let user = args.get_user("user").map(|s| s.get_user().id).ok();
         let role = args.get_role("role").map(|s| s.id).ok();
