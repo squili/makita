@@ -127,7 +127,10 @@ impl PreviewsModule {
                             let mut builder = CreateEmbed::default();
                             builder.color(embed.colour);
                             if let Some(title) = &embed.title { builder.title(title); }
-                            if let Some(description) = &embed.description { builder.description(description); }
+                            match embed.description {
+                                Some(description) => builder.description(description),
+                                None => builder.description(" "),
+                            }
                             if let Some(url) = &embed.url { builder.url(url); }
                             if let Some(timestamp) = &embed.timestamp { builder.timestamp(timestamp.clone()); }
                             if let Some(image) = embed.image { builder.image(image.url); };
