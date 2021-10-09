@@ -6,7 +6,7 @@
 use std::borrow::Cow;
 use anyhow::{Error, Result};
 use serenity::client::Context;
-use serenity::model::channel::{Message, GuildChannel, Attachment};
+use serenity::model::channel::{Message, GuildChannel, Attachment, MessageType};
 use serenity::model::id::{GuildId, ChannelId, MessageId, UserId};
 use sqlx::{PgPool, Row};
 use regex::Regex;
@@ -82,43 +82,176 @@ impl PreviewsModule {
         Ok(())
     }
 
-    async fn task_event_handling(&self) {}
+    async fn derive_embed(ctx: &BotContext, message: &Message, foreign: Option<&Guild>) -> CreateEmbed {
+        macro filter_kind {
+            ($($ty: ident),*) => {
+                match message.kind {
+                    $(MessageType::$ty)|* => true,
+                    _ => false
+                }
+            }
+        }
 
-    async fn preview(&self, ctx: &BotContext, original: &str, from_user: &UserId, from_guild: &Option<GuildId>,
+        let maybe_link_foreign = match foreign {
+            Some(guild) => format!("[{}](https://discord.com/channels/{}/{}) ", guild.name, guild.id, message.channel_id),
+            None => "".to_string(),
+        };
+
+        let mut embed = CreateEmbed::default();
+
+        if let MessageType::ThreadStarterMessage = message.kind {
+            embed.description("I haven't been able to actually find this message type in the wild. Shoot me a ping or 12.");
+            return embed;
+        }
+
+        if filter_kind!(GroupRecipientAddition, GroupRecipientRemoval, GroupCallCreation, GroupNameUpdate, GroupIconUpdate) {
+            embed.description("This is awkward... I shouldn't be able to see this message, yet I do. How will I resolve this paradox?");
+            return embed;
+        }
+
+        if filter_kind!(Unknown, GuildInviteReminder, GuildDiscoveryDisqualified, GuildDiscoveryRequalified,
+            GuildDiscoveryGracePeriodInitialWarning, GuildDiscoveryGracePeriodFinalWarning) {
+            embed.description("Unsupported message type");
+            return embed;
+        }
+
+        // populate author
+        if filter_kind!(Regular, PinsAdd, NitroBoost, NitroTier1, NitroTier2, NitroTier3, MemberJoin,
+            ChannelFollowAdd, ThreadCreated, InlineReply, ApplicationCommand, ContextMenuCommand) {
+            embed.author(|author|
+                author
+                    .name(format!("{}#{}", message.author.name, message.author.discriminator))
+                    .icon_url(message.author.avatar_url().unwrap_or_else(|| message.author.default_avatar_url()))
+                    .url(message.link())
+            );
+        }
+
+        // standard-type messages
+        if filter_kind!(Regular, InlineReply) {
+            embed
+                .description(match &message.referenced_message {
+                    Some(referenced) => format!("{}\n[Reply to]({})", message.content, referenced.link_ensured(&ctx).await),
+                    None => message.content.clone(),
+                })
+                .field("Channel", message.channel_id.mention(), true)
+                .field("Author", message.author.mention(), true);
+            match &foreign {
+                Some(guild) => {
+                    embed.field("Guild", guild.name.clone(), true);
+                }
+                None => {}
+            }
+        }
+
+        // timestamp
+        if filter_kind!(Regular, InlineReply, NitroBoost, NitroTier1, NitroTier2, NitroTier3,
+            PinsAdd, ChannelFollowAdd, ThreadCreated) {
+            embed.timestamp(&message.timestamp);
+        }
+
+        // nitro
+        if filter_kind!(NitroBoost, NitroTier1, NitroTier2, NitroTier3) {
+            embed.description(format!("{} boosted the server{}!", message.author.mention(), match message.kind {
+                MessageType::NitroTier1 => ", achieving tier 1",
+                MessageType::NitroTier2 => ", achieving tier 2",
+                MessageType::NitroTier3 => ", achieving tier 3",
+                _ => ""
+            }));
+        }
+
+        // interactions
+        if filter_kind!(ApplicationCommand, ContextMenuCommand) {
+            embed.description("InteractionMessage");
+        }
+
+        // single-match messages
+        match message.kind {
+            MessageType::PinsAdd => {
+                let reference = message.message_reference.as_ref().unwrap();
+                embed.description(format!("{} pinned [a message]({}) in {}{}", message.author.mention(),
+                    reference.message_id.unwrap().link(reference.channel_id, message.guild_id),
+                    maybe_link_foreign, message.channel_id.mention()));
+            }
+            MessageType::MemberJoin => {
+                embed.description(format!("{} joined {}on <t:{time}:f>, <t:{time}:R>",
+                    message.author.mention(), maybe_link_foreign, time = message.timestamp.timestamp() as u64));
+            }
+            MessageType::ChannelFollowAdd => {
+                let reference = message.message_reference.as_ref().unwrap();
+                embed.description(format!("{} started following {}{} in {}{}", message.author.mention(),
+                    match ctx.cache.guild(reference.guild_id.unwrap()).await {
+                        Some(guild) => format!("[{}](https://discord.com/channels/{}/{}) ",
+                            guild.name, reference.guild_id.unwrap(), reference.channel_id),
+                        None => "".to_string()
+                    },
+                    reference.channel_id.mention(), maybe_link_foreign, message.channel_id.mention()));
+            }
+            MessageType::ThreadCreated => {
+                embed.description("ThreadCreated");
+            }
+            _ => {}
+        };
+
+        /*
+         Regular,
+         GroupRecipientAddition,
+         GroupRecipientRemoval,
+         GroupCallCreation,
+         GroupNameUpdate,
+         GroupIconUpdate,
+         PinsAdd,
+         MemberJoin,
+         NitroBoost,
+         NitroTier1,
+         NitroTier2,
+         NitroTier3,
+         ChannelFollowAdd,
+         GuildDiscoveryDisqualified,
+         GuildDiscoveryRequalified,
+         GuildDiscoveryGracePeriodInitialWarning,
+         GuildDiscoveryGracePeriodFinalWarning,
+         ThreadCreated,
+         InlineReply,
+         ApplicationCommand,
+         ThreadStarterMessage,
+         GuildInviteReminder,
+         ContextMenuCommand,
+         Unknown,
+         */
+
+        embed
+    }
+
+    async fn preview(&self, ctx: &BotContext, from_user: &UserId, from_guild: &Option<GuildId>,
                      guild: GuildId, channel: ChannelId, message: MessageId) -> Result<(Vec<CreateEmbed>, Vec<Attachment>)> {
-        match ctx.cache.guild(&guild).await {
+        match ctx.cache.guild(&guild).await { // get guild
             None => Err(Error::new(BotError::NotFound("Server".to_string()))),
             Some(guild) => {
-                match guild.member(&ctx.http, *from_user).await {
+                match guild.member(&ctx, *from_user).await { // get member
                     Err(_) => Err(Error::new(BotError::Generic("You must be in a server to preview messages from it".to_string()))),
                     Ok(member) => {
-                        if !member.roles(&ctx.cache).await.ok_or(BotError::CacheMissing)?
+                        // get permissions
+                        if !member.roles(&ctx).await.ok_or(BotError::CacheMissing)?
                             .iter().any(|role| role.permissions.administrator()) {
-                            if !guild.user_permissions_in(guild.channels.get(&channel).ok_or(BotError::CacheMissing)?, &member)?.read_messages() {
+                            if !guild.user_permissions_in(match guild.channels.get(&channel) { // get channel
+                                Some(s) => s,
+                                None => match guild.threads.iter().find(|c| c.id == channel) {
+                                    Some(s) => s,
+                                    None => return Err(Error::new(BotError::CacheMissing))
+                                }
+                            }, &member)?.read_messages() {
                                 return Err(Error::new(BotError::Generic("You do not have permission to view this message".to_string())));
                             }
                         }
-                        let message = channel.message(&ctx.http, &message).await
+                        // get message
+                        let mut message = channel.message(&ctx, &message).await
                             .map_err(|_| Error::new(BotError::NotFound("Message".to_string())))?;
+                        message.guild_id = Some(guild.id.clone());
 
-                        let mut embed = CreateEmbed::default();
-                        embed
-                            .description(&message.content)
-                            .author(|author|
-                                author
-                                    .name(format!("{}#{}", message.author.name, message.author.discriminator))
-                                    .icon_url(message.author.avatar_url().unwrap_or_else(|| message.author.default_avatar_url()))
-                                    .url(original)
-                            ).timestamp(&message.timestamp)
-                            .field("Channel", channel.mention(), true)
-                            .field("Author", message.author.mention(), true);
+                        // inner /previews view target: https://canary.discord.com/channels/891587287723409428/894377090009403442/895877429820792852
 
-                        if match from_guild {
-                            Some(s) => *s != guild.id,
-                            None => true
-                        } {
-                            embed.field("Guild", guild.name, true);
-                        }
+                        let embed = Self::derive_embed(&ctx, &message,
+                            from_guild.and_then(|s| if s == guild.id { None } else { Some(&guild) })).await;
 
                         let mut embeds = vec![embed];
 
@@ -178,7 +311,6 @@ impl PreviewsModule {
 
         for item in self.link_regex.captures_iter(&message.content) {
             match self.preview(&ctx,
-                item.get(0).unwrap().as_str(),
                 &message.author.id,
                 &message.guild_id,
                 GuildId(u64::from_str(item.get(1).ok_or(BotError::Internal(0))?.as_str()).map_err(|_| BotError::Internal(1))?),
@@ -334,7 +466,6 @@ impl PreviewsModule {
         let captures = self.link_regex.captures(&target).ok_or(BotError::Generic("Malformed link".to_string()))?;
 
         let (embeds, attachments) = self.preview(&ctx,
-                     captures.get(0).unwrap().as_str(),
                      &interaction.user.id,
                      &interaction.guild_id,
                      GuildId(u64::from_str(captures.get(1).ok_or(BotError::Internal(6))?.as_str()).map_err(|_| BotError::Internal(7))?),

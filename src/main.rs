@@ -180,7 +180,7 @@ async fn start() -> Result<()> {
 
     shutdown_rx.recv().await; // wait for shutdown
     shard_manager.lock().await.shutdown_all().await; // shutdown gateway connection
-    task_tx.send(TaskMessage::Kill); // shutdown tasks
+    task_tx.send(TaskMessage::Kill)?; // shutdown tasks
 
     Ok(())
 }
