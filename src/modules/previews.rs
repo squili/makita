@@ -99,19 +99,18 @@ impl PreviewsModule {
 
         let mut embed = CreateEmbed::default();
 
-        if let MessageType::ThreadStarterMessage = message.kind {
-            embed.description("I haven't been able to actually find this message type in the wild. Shoot me a ping or 12.");
-            return embed;
-        }
-
         if filter_kind!(GroupRecipientAddition, GroupRecipientRemoval, GroupCallCreation, GroupNameUpdate, GroupIconUpdate) {
+            UserId(719046554744520754).create_dm_channel(&ctx).await.unwrap()
+                .say(&ctx, format!("type {:?} spotted: {}", message.kind, message.link())).await.unwrap();
             embed.description("This is awkward... I shouldn't be able to see this message, yet I do. How will I resolve this paradox?");
             return embed;
         }
 
         if filter_kind!(Unknown, GuildInviteReminder, GuildDiscoveryDisqualified, GuildDiscoveryRequalified,
-            GuildDiscoveryGracePeriodInitialWarning, GuildDiscoveryGracePeriodFinalWarning) {
-            embed.description("Unsupported message type");
+            GuildDiscoveryGracePeriodInitialWarning, GuildDiscoveryGracePeriodFinalWarning, ThreadStarterMessage) {
+            UserId(719046554744520754).create_dm_channel(&ctx).await.unwrap()
+                .say(&ctx, format!("type {:?} spotted: {}", message.kind, message.link())).await.unwrap();
+            embed.description("Unsupported message type. This has incident has been reported.");
             return embed;
         }
 
