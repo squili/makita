@@ -12,7 +12,7 @@ use serenity::model::gateway::{Activity, Ready};
 use sqlx::{Postgres, Pool};
 use serenity::model::guild::Guild;
 use serenity::model::id::{ApplicationId, UserId};
-use serenity::model::interactions::{Interaction, InteractionResponseType};
+use serenity::model::interactions::Interaction;
 use serenity::model::interactions::application_command::ApplicationCommandType;
 use crate::router;
 use serenity::utils::Color;
@@ -50,7 +50,7 @@ impl EventHandler for Handler {
     async fn channel_delete(&self, ctx: Context, channel: &GuildChannel) {
         let b_ctx = BotContext::build(ctx, self.pool.clone());
         tokio::join! {
-            pass_event!("Previews", &self.previews, PreviewsModule::channel_delete, &b_ctx, &channel),
+            pass_event!("Previews", &self.previews, PreviewsModule::channel_delete, &b_ctx, channel),
         };
     }
 
@@ -88,9 +88,9 @@ impl EventHandler for Handler {
                     command.defer(&b_ctx).await
                 );
                 match match command.data.kind {
-                    ApplicationCommandType::ChatInput => router::chat_input_router(&self, &b_ctx, &command).await,
-                    ApplicationCommandType::User => router::user_router(&self, &b_ctx, &command).await,
-                    ApplicationCommandType::Message => router::message_router(&self, &b_ctx, &command).await,
+                    ApplicationCommandType::ChatInput => router::chat_input_router(self, &b_ctx, &command).await,
+                    ApplicationCommandType::User => router::user_router(self, &b_ctx, &command).await,
+                    ApplicationCommandType::Message => router::message_router(self, &b_ctx, &command).await,
                     _ => Ok(()),
                 } {
                     Ok(_) => {}
@@ -110,7 +110,7 @@ impl EventHandler for Handler {
                     "Component Deferral",
                     component.defer(&b_ctx).await
                 );
-                match router::component_router(&self, &b_ctx, &component).await {
+                match router::component_router(self, &b_ctx, &component).await {
                     Ok(_) => {}
                     Err(err) =>
                         handler_log!(

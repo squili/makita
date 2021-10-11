@@ -105,7 +105,7 @@ async fn start() -> Result<()> {
         pool: pool.clone(),
         application_id: ApplicationId(application_id),
         owner_id: config.owner_id.clone(),
-        updates: Arc::new(modules::UpdatesModule::new(config.owner_id.clone(), shutdown_tx.clone())),
+        updates: Arc::new(modules::UpdatesModule::new(shutdown_tx.clone())),
         permissions: Arc::new(modules::PermissionsModule::new(config.owner_id.clone(), pool.clone())),
         previews: Arc::new(modules::PreviewsModule::new()?),
     };
@@ -166,9 +166,9 @@ async fn start() -> Result<()> {
     info!("starting client");
     let shutdown_tx_clone = shutdown_tx.clone();
     tokio::spawn(async move {
-        CtrlC::new().unwrap().await;
+        CtrlC::new().expect("Error registering CtrlC handler").await;
         info!("goodbye!");
-        shutdown_tx_clone.send(()).await;
+        shutdown_tx_clone.send(()).await.expect("Error sending shutdown signal");
     });
 
     let shard_manager = client.shard_manager.clone();

@@ -5,9 +5,8 @@
 
 use anyhow::{Result, Error};
 use crate::handler::Handler;
-use serenity::client::Context;
 use serenity::model::interactions::application_command::ApplicationCommandInteraction;
-use crate::{decode, modules};
+use crate::decode;
 use crate::error::BotError;
 use serenity::model::interactions::message_component::MessageComponentInteraction;
 use crate::custom_ids::{parse_custom_id, CustomIdType};
@@ -43,6 +42,16 @@ macro ensure_permission_base {
     }
 }
 
+macro ensure_owner_base {
+    ($interaction: expr, $handler: expr, $command: expr) => {
+        if $interaction.user.id == $handler.owner_id {
+            $command
+        } else {
+            Err(Error::new(BotError::OwnerOnly($interaction.user.id)))
+        }
+    }
+}
+
 pub async fn chat_input_router(handler: &Handler, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
     macro ensure_permission {
         ($permission: path, $command: expr) => {
@@ -52,11 +61,7 @@ pub async fn chat_input_router(handler: &Handler, ctx: &BotContext, interaction:
 
     macro ensure_owner {
         ($command: expr) => {
-            if interaction.user.id == handler.owner_id {
-                $command
-            } else {
-                Err(Error::new(BotError::OwnerOnly(interaction.user.id)))
-            }
+            ensure_owner_base!(interaction, handler, $command)
         }
     }
 
@@ -70,6 +75,7 @@ pub async fn chat_input_router(handler: &Handler, ctx: &BotContext, interaction:
         "makita checkupdates" => ensure_owner!(handler.updates.check_command(ctx, interaction).await),
         "makita update" => ensure_owner!(handler.updates.update_command(ctx, interaction).await),
         "makita restart" => ensure_owner!(handler.updates.restart_command(ctx, interaction).await),
+        "makita debug" => ensure_owner!(crate::utils::debug_command(ctx, interaction).await),
         "permissions list" => ensure_permission!(PermissionType::ManagePermissions, handler.permissions.permissions_list(ctx, interaction).await),
         "permissions set" => ensure_permission!(PermissionType::ManagePermissions, handler.permissions.permissions_set(ctx, interaction, args).await),
         "permissions add" => ensure_permission!(PermissionType::ManagePermissions, handler.permissions.permissions_add(ctx, interaction, args).await),
@@ -89,12 +95,19 @@ pub async fn component_router(handler: &Handler, ctx: &BotContext, interaction: 
         }
     }
 
+    macro ensure_owner {
+        ($command: expr) => {
+            ensure_owner_base!(interaction, handler, $command)
+        }
+    }
+
     let (ty, _args) = parse_custom_id(&interaction.data.custom_id)?;
 
     debug!("received component with id {}", interaction.data.custom_id);
 
     use CustomIdType::*;
     match ty {
+        Debug => ensure_owner!(crate::utils::debug_component(ctx, interaction).await),
         ListPermissions => ensure_permission!(PermissionType::ManagePermissions, handler.permissions.permissions_list_component(ctx, interaction).await),
     }
 }

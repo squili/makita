@@ -8,14 +8,10 @@ use std::os::unix::fs::PermissionsExt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use anyhow::{Error, Result};
 use semver::Version;
-use serenity::client::Context;
-use serenity::model::id::{ApplicationId, UserId};
 use serenity::model::interactions::application_command::ApplicationCommandInteraction;
-use serenity::model::misc::Mentionable;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::mpsc;
 use tokio::fs;
 use crate::error::BotError;
-use crate::tasks::TaskMessage;
 use crate::utils::{BotContext, FollowupBuilder};
 use crate::macros::invite_url;
 
@@ -93,13 +89,12 @@ pub async fn do_update() -> Result<()> {
 }
 
 pub struct UpdatesModule {
-    owner_id: UserId,
     shutdown_tx: mpsc::Sender<()>,
 }
 
 impl UpdatesModule {
-    pub fn new(owner_id: UserId, shutdown_tx: mpsc::Sender<()>) -> Self {
-        Self { owner_id, shutdown_tx }
+    pub fn new(shutdown_tx: mpsc::Sender<()>) -> Self {
+        Self { shutdown_tx }
     }
 
     pub async fn info_command(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {

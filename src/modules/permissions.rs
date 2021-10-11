@@ -13,7 +13,6 @@ use tokio::sync::{broadcast, RwLock};
 use sqlx::{PgPool, Row};
 use crate::utils::{SqlId, FollowupBuilder, BotContext};
 use crate::macros::impl_cache_functions;
-use serenity::client::Context;
 use crate::error::BotError;
 use serenity::model::interactions::application_command::ApplicationCommandInteraction;
 use serenity::builder::CreateSelectMenuOptions;
@@ -205,9 +204,8 @@ impl PermissionsModule {
             return Ok(None);
         }
         self.guild_read(&guild, |entry| {
-            if Self::entry_perms_check(&PermissionType::Administrator, &entry, &highest_permissions, &user, &roles) {
-                Ok(None)
-            } else if Self::entry_perms_check(&ty, &entry, &highest_permissions, &user, &roles) {
+            if Self::entry_perms_check(&PermissionType::Administrator, &entry, &highest_permissions, &user, &roles) ||
+                Self::entry_perms_check(&ty, &entry, &highest_permissions, &user, &roles) {
                 Ok(None)
             } else {
                 Ok(Some(ty))
@@ -373,7 +371,7 @@ impl PermissionsModule {
 
         FollowupBuilder::new()
             .description("Success")
-            .build_command(&ctx.http, &interaction)
+            .build_command(&ctx.http, interaction)
             .await
     }
 }

@@ -35,6 +35,12 @@
         name: 'restart',
         description: 'Restart the bot',
         options: [],
+      },
+      {
+        type: 1,
+        name: 'debug',
+        description: 'Some debug functionality, depending on the build',
+        options: [],
       }
     ]
   },

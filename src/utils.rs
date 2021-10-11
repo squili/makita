@@ -4,15 +4,17 @@
 // If not, see <https://www.gnu.org/licenses/#AGPL>
 
 use std::sync::Arc;
-use serenity::builder::Timestamp;
 use anyhow::Result;
 use serenity::cache::Cache;
-use serenity::{CacheAndHttp, Client};
+use serenity::CacheAndHttp;
 use serenity::client::Context;
 use serenity::http::{CacheHttp, Http};
+use serenity::model::channel::MessageReference;
+use serenity::model::id::{ChannelId, GuildId};
 use serenity::model::interactions::application_command::ApplicationCommandInteraction;
-use serenity::model::interactions::message_component::MessageComponentInteraction;
+use serenity::model::interactions::message_component::{ButtonStyle, MessageComponentInteraction};
 use sqlx::PgPool;
+use crate::custom_ids::{build_custom_id, CustomIdType};
 
 #[derive(Clone)]
 pub struct BotContext {
@@ -61,12 +63,10 @@ impl CacheHttp for BotContext {
     }
 }
 
-pub fn remove_indexes<T>(vector: &mut Vec<T>, indexes: &Vec<usize>) -> Vec<T> {
-    let mut offset = 0;
+pub fn remove_indexes<T>(vector: &mut Vec<T>, indexes: &[usize]) -> Vec<T> {
     let mut entries = Vec::new();
-    for entry in indexes {
+    for (offset, entry) in indexes.iter().enumerate() {
         entries.push(vector.remove(entry - offset));
-        offset += 1;
     }
     entries
 }
@@ -141,4 +141,55 @@ impl FollowupBuilder {
 
     builder_entry!(String, title);
     builder_entry!(String, description);
+}
+
+pub trait TryLink {
+    fn try_link(&self) -> Option<String>;
+}
+
+impl TryLink for MessageReference {
+    fn try_link(&self) -> Option<String> {
+        self.guild_id.map(|guild| {
+            match self.message_id {
+                Some(msg) => format!("https://discord.com/channels/{}/{}/{}", guild, self.channel_id, msg),
+                None => format!("https://discord.com/channels/{}/{}", guild, self.channel_id),
+            }
+        })
+    }
+}
+
+pub trait Link {
+    fn link(&self) -> String;
+}
+
+impl<T: TryLink> Link for T {
+    fn link(&self) -> String {
+        self.try_link().unwrap()
+    }
+}
+
+impl Link for (GuildId, ChannelId) {
+    fn link(&self) -> String {
+        format!("https://discord.com/channels/{}/{}", self.0, self.1)
+    }
+}
+
+// some debug command
+pub async fn debug_command(ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
+    interaction.create_followup_message(&ctx, |m| {
+        m.content(".").components(|c| c.create_action_row(|a|
+            a.create_button(|b| b.style(ButtonStyle::Primary)
+                .custom_id(build_custom_id(&CustomIdType::Debug, &None)).label("abc"))))
+    }).await?;
+
+    Ok(())
+}
+
+// some debug component
+pub async fn debug_component(ctx: &BotContext, interaction: &MessageComponentInteraction) -> Result<()> {
+    interaction.create_followup_message(&ctx, |m| m.content("1")).await?;
+    interaction.create_followup_message(&ctx, |m| m.content("2")).await?;
+    interaction.create_followup_message(&ctx, |m| m.content("3")).await?;
+
+    Ok(())
 }

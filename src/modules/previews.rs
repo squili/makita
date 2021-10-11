@@ -5,8 +5,7 @@
 
 use std::borrow::Cow;
 use anyhow::{Error, Result};
-use serenity::client::Context;
-use serenity::model::channel::{Message, GuildChannel, Attachment, MessageType};
+use serenity::model::channel::{Message, GuildChannel, Attachment, MessageType, MessageFlags};
 use serenity::model::id::{GuildId, ChannelId, MessageId, UserId};
 use sqlx::{PgPool, Row};
 use regex::Regex;
@@ -17,7 +16,7 @@ use std::sync::Arc;
 use serenity::builder::CreateEmbed;
 use serenity::http::AttachmentType;
 use serenity::model::guild::Guild;
-use crate::utils::{remove_indexes, SqlId, default_arg, FollowupBuilder, BotContext};
+use crate::utils::{remove_indexes, SqlId, default_arg, FollowupBuilder, BotContext, Link};
 use sqlx::postgres::PgRow;
 use crate::decode::SlashMap;
 use serenity::model::interactions::application_command::ApplicationCommandInteraction;
@@ -92,8 +91,9 @@ impl PreviewsModule {
             }
         }
 
+        let flags = message.flags.unwrap_or_else(MessageFlags::empty);
         let maybe_link_foreign = match foreign {
-            Some(guild) => format!("[{}](https://discord.com/channels/{}/{}) ", guild.name, guild.id, message.channel_id),
+            Some(guild) => format!("[{}]{} ", guild.name, (guild.id, message.channel_id).link()),
             None => "".to_string(),
         };
 
@@ -106,8 +106,9 @@ impl PreviewsModule {
             return embed;
         }
 
-        if filter_kind!(Unknown, GuildInviteReminder, GuildDiscoveryDisqualified, GuildDiscoveryRequalified,
-            GuildDiscoveryGracePeriodInitialWarning, GuildDiscoveryGracePeriodFinalWarning, ThreadStarterMessage) {
+        if filter_kind!(Unknown, GuildInviteReminder, GuildDiscoveryDisqualified,
+            GuildDiscoveryRequalified, GuildDiscoveryGracePeriodInitialWarning,
+            GuildDiscoveryGracePeriodFinalWarning, ThreadStarterMessage, ContextMenuCommand) {
             UserId(719046554744520754).create_dm_channel(&ctx).await.unwrap()
                 .say(&ctx, format!("type {:?} spotted: {}", message.kind, message.link())).await.unwrap();
             embed.description("Unsupported message type. This has incident has been reported.");
@@ -119,14 +120,21 @@ impl PreviewsModule {
             ChannelFollowAdd, ThreadCreated, InlineReply, ApplicationCommand, ContextMenuCommand) {
             embed.author(|author|
                 author
-                    .name(format!("{}#{}", message.author.name, message.author.discriminator))
+                    .name(match message.author.discriminator {
+                        0 => message.author.name.clone(),
+                        _ => format!("{}#{:04}", message.author.name, message.author.discriminator),
+                    })
+                    .url(if flags.contains(MessageFlags::IS_CROSSPOST) {
+                        message.message_reference.as_ref().unwrap().link()
+                    } else {
+                        message.link()
+                    })
                     .icon_url(message.author.avatar_url().unwrap_or_else(|| message.author.default_avatar_url()))
-                    .url(message.link())
             );
         }
 
         // standard-type messages
-        if filter_kind!(Regular, InlineReply) {
+        if filter_kind!(Regular, InlineReply, ApplicationCommand) {
             embed
                 .description(match &message.referenced_message {
                     Some(referenced) => format!("{}\n[Reply to]({})", message.content, referenced.link_ensured(&ctx).await),
@@ -158,11 +166,6 @@ impl PreviewsModule {
             }));
         }
 
-        // interactions
-        if filter_kind!(ApplicationCommand, ContextMenuCommand) {
-            embed.description("InteractionMessage");
-        }
-
         // single-match messages
         match message.kind {
             MessageType::PinsAdd => {
@@ -179,44 +182,50 @@ impl PreviewsModule {
                 let reference = message.message_reference.as_ref().unwrap();
                 embed.description(format!("{} started following {}{} in {}{}", message.author.mention(),
                     match ctx.cache.guild(reference.guild_id.unwrap()).await {
-                        Some(guild) => format!("[{}](https://discord.com/channels/{}/{}) ",
-                            guild.name, reference.guild_id.unwrap(), reference.channel_id),
+                        Some(guild) => format!("[{}]{} ",
+                            guild.name, reference.link()),
                         None => "".to_string()
                     },
                     reference.channel_id.mention(), maybe_link_foreign, message.channel_id.mention()));
             }
             MessageType::ThreadCreated => {
-                embed.description("ThreadCreated");
+                let reference = message.message_reference.as_ref().unwrap();
+                embed.description(format!("{} created the thread {} in {}{}", message.author.mention(),
+                    match message.guild(&ctx).await.unwrap().threads.iter()
+                        .find(|thread| thread.id == reference.channel_id) {
+                        Some(channel) => channel.mention().to_string(),
+                        None => format!("#{}", message.content),
+                    }, maybe_link_foreign, message.channel_id.mention()));
             }
             _ => {}
         };
 
-        /*
-         Regular,
-         GroupRecipientAddition,
-         GroupRecipientRemoval,
-         GroupCallCreation,
-         GroupNameUpdate,
-         GroupIconUpdate,
-         PinsAdd,
-         MemberJoin,
-         NitroBoost,
-         NitroTier1,
-         NitroTier2,
-         NitroTier3,
-         ChannelFollowAdd,
-         GuildDiscoveryDisqualified,
-         GuildDiscoveryRequalified,
-         GuildDiscoveryGracePeriodInitialWarning,
-         GuildDiscoveryGracePeriodFinalWarning,
-         ThreadCreated,
-         InlineReply,
-         ApplicationCommand,
-         ThreadStarterMessage,
-         GuildInviteReminder,
-         ContextMenuCommand,
-         Unknown,
-         */
+        // flags
+        if flags.contains(MessageFlags::CROSSPOSTED) {
+            embed.field("Crossposted", "\u{200B}", true);
+        }
+
+        if flags.contains(MessageFlags::SOURCE_MESSAGE_DELETED) {
+            embed.field("Crosspost", "Source deleted", true);
+        } else if flags.contains(MessageFlags::IS_CROSSPOST) {
+            let reference = message.message_reference.as_ref().unwrap();
+            match ctx.cache.guild_field(reference.guild_id.unwrap(), |f| f.name.clone()).await {
+                Some(guild) => {
+                    embed.field("Crosspost", format!("From [{}]({})", guild, reference.link()), true);
+                }
+                None => {
+                    embed.field("Crosspost", format!("From {}", reference.channel_id.mention()), true);
+                }
+            }
+        }
+
+        if flags.contains(MessageFlags::HAS_THREAD) && message.kind != MessageType::ThreadCreated {
+            embed.field("Thread", ChannelId(message.id.0).mention(), true);
+        }
+
+        if flags.contains(MessageFlags::LOADING) {
+            embed.description(format!("{} is thinking...", message.author.mention()));
+        }
 
         embed
     }
@@ -231,16 +240,15 @@ impl PreviewsModule {
                     Ok(member) => {
                         // get permissions
                         if !member.roles(&ctx).await.ok_or(BotError::CacheMissing)?
-                            .iter().any(|role| role.permissions.administrator()) {
-                            if !guild.user_permissions_in(match guild.channels.get(&channel) { // get channel
+                            .iter().any(|role| role.permissions.administrator())
+                            && !guild.user_permissions_in(match guild.channels.get(&channel) { // get channel
                                 Some(s) => s,
                                 None => match guild.threads.iter().find(|c| c.id == channel) {
                                     Some(s) => s,
                                     None => return Err(Error::new(BotError::CacheMissing))
                                 }
                             }, &member)?.read_messages() {
-                                return Err(Error::new(BotError::Generic("You do not have permission to view this message".to_string())));
-                            }
+                            return Err(Error::new(BotError::Generic("You do not have permission to view this message".to_string())));
                         }
                         // get message
                         let mut message = channel.message(&ctx, &message).await

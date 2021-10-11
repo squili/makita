@@ -5,15 +5,15 @@
 
 use anyhow::Result;
 use chrono::{Duration, Utc};
-use log::{error, info};
+use log::error;
 use serenity::client::Cache;
 use serenity::model::id::GuildId;
 use sqlx::postgres::PgRow;
-use sqlx::{PgPool, Pool, Postgres, Row};
+use sqlx::{PgPool, Row};
 use std::future::Future;
 use std::sync::Arc;
 use serenity::http::{CacheHttp, Http};
-use tokio::sync::{mpsc, oneshot, broadcast};
+use tokio::sync::broadcast;
 use tokio::time::sleep;
 use crate::utils::{BotContext, SqlId};
 use crate::macros::debug;
@@ -65,7 +65,7 @@ impl CacheHttp for TaskContext {
     }
 }
 
-pub async fn background_task<C, Fut>(name: &'static str, call: C, mut ctx: TaskContext, wait: Duration)
+pub async fn background_task<C, Fut>(name: &'static str, call: C, ctx: TaskContext, wait: Duration)
 where
     C: Fn(&TaskContext) -> Fut,
     Fut: Future<Output = Result<()>>,
@@ -76,11 +76,7 @@ where
         if tokio::select! {
             _ = sleep(wait) => false,
             resp = task_rx.recv() => match resp {
-                Ok(msg) =>
-                    match msg {
-                        TaskMessage::Kill => true,
-                        _ => false,
-                    }
+                Ok(msg) => matches!(msg, TaskMessage::Kill),
                 Err(e) => {
                     error!("Error in broadcast receive in {}: {:?}", name, e);
                     true
