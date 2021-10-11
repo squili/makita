@@ -253,11 +253,11 @@ impl PreviewsModule {
                         // get message
                         let mut message = channel.message(&ctx, &message).await
                             .map_err(|_| Error::new(BotError::NotFound("Message".to_string())))?;
-                        message.guild_id = Some(guild.id.clone());
+                        message.guild_id = Some(guild.id);
 
                         // inner /previews view target: https://canary.discord.com/channels/891587287723409428/894377090009403442/895877429820792852
 
-                        let embed = Self::derive_embed(&ctx, &message,
+                        let embed = Self::derive_embed(ctx, &message,
                             from_guild.and_then(|s| if s == guild.id { None } else { Some(&guild) })).await;
 
                         let mut embeds = vec![embed];
@@ -310,14 +310,15 @@ impl PreviewsModule {
         }
 
         // detect if we should scan
-        if !self.read_cache(&message.guild_id.unwrap(), |cached: &Vec<ChannelId>| {
+        let should_scan = self.read_cache(&message.guild_id.unwrap(), |cached: &Vec<ChannelId>| {
             cached.contains(&message.channel_id)
-        }).await {
+        }).await;
+        if !should_scan {
             return Ok(());
         }
 
         for item in self.link_regex.captures_iter(&message.content) {
-            match self.preview(&ctx,
+            match self.preview(ctx,
                 &message.author.id,
                 &message.guild_id,
                 GuildId(u64::from_str(item.get(1).ok_or(BotError::Internal(0))?.as_str()).map_err(|_| BotError::Internal(1))?),
@@ -334,7 +335,7 @@ impl PreviewsModule {
                     for chunk in chunks {
                         message.channel_id.send_message(&ctx.http, |m| m.set_embeds(chunk.to_vec())).await?;
                     }
-                    if downloaded.len() > 0 {
+                    if !downloaded.is_empty() {
                         message.channel_id.send_message(&ctx.http, |m| m.files(downloaded)).await?;
                     }
                 }
@@ -352,7 +353,7 @@ impl PreviewsModule {
         let entries = self.write_cache(&guild.id, |cached: &mut Vec<ChannelId>| {
             let mut indexes = Vec::new();
             for (index, channel) in cached.iter().enumerate() {
-                if !guild.channels.contains_key(&channel) {
+                if !guild.channels.contains_key(channel) {
                     indexes.push(index);
                 }
             }
@@ -374,18 +375,15 @@ impl PreviewsModule {
         let remove = self.read_cache(&channel.guild_id, |cached: &Vec<ChannelId>| {
             cached.binary_search(&channel.id).ok()
         }).await;
-        match remove {
-            Some(s) => {
-                self.write_cache(&channel.guild_id, |cached: &mut Vec<ChannelId>| {
-                    cached.remove(s);
-                }).await;
-                sqlx::query("delete from PreviewChannels where guild_id = $1 and channel_id = $2")
-                    .bind(SqlId(channel.guild_id))
-                    .bind(SqlId(channel.id))
-                    .execute(&ctx.pool)
-                    .await?;
-            }
-            None => {}
+        if let Some(s) = remove {
+            self.write_cache(&channel.guild_id, |cached: &mut Vec<ChannelId>| {
+                cached.remove(s);
+            }).await;
+            sqlx::query("delete from PreviewChannels where guild_id = $1 and channel_id = $2")
+                .bind(SqlId(channel.guild_id))
+                .bind(SqlId(channel.id))
+                .execute(&ctx.pool)
+                .await?;
         }
         Ok(())
     }
@@ -394,14 +392,15 @@ impl PreviewsModule {
         let target = args.get_channel("target")?;
         let guild_id = interaction.guild_id.ok_or(BotError::GuildOnly)?;
 
-        if self.write_cache(&guild_id, |data| {
+        let already_added = self.write_cache(&guild_id, |data| {
             if data.contains(&target.id) {
                 true
             } else {
                 data.push(target.id);
                 false
             }
-        }).await {
+        }).await;
+        if already_added {
             return Err(Error::new(BotError::Generic("Channel already added".to_string())))
         }
 
@@ -413,7 +412,7 @@ impl PreviewsModule {
 
         FollowupBuilder::new()
             .description("Success")
-            .build_command(&ctx.http, &interaction)
+            .build_command(&ctx.http, interaction)
             .await
     }
 
@@ -421,7 +420,7 @@ impl PreviewsModule {
         let target = args.get_channel("target")?;
         let guild_id = interaction.guild_id.ok_or(BotError::GuildOnly)?;
 
-        if self.write_cache(&guild_id, |data| {
+        let not_in_previews = self.write_cache(&guild_id, |data| {
             match data.binary_search(&target.id) {
                 Ok(s) => {
                     data.remove(s);
@@ -429,7 +428,8 @@ impl PreviewsModule {
                 },
                 Err(_) => true,
             }
-        }).await {
+        }).await;
+        if not_in_previews {
             return Err(Error::new(BotError::Generic("Channel not in previews".to_string())))
         }
 
@@ -441,7 +441,7 @@ impl PreviewsModule {
 
         FollowupBuilder::new()
             .description("Success")
-            .build_command(&ctx.http, &interaction)
+            .build_command(&ctx.http, interaction)
             .await
     }
 
@@ -470,9 +470,9 @@ impl PreviewsModule {
     pub async fn previews_view(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
         let target = args.get_string("target")?;
 
-        let captures = self.link_regex.captures(&target).ok_or(BotError::Generic("Malformed link".to_string()))?;
+        let captures = self.link_regex.captures(&target).ok_or_else(|| BotError::Generic("Malformed link".to_string()))?;
 
-        let (embeds, attachments) = self.preview(&ctx,
+        let (embeds, attachments) = self.preview(ctx,
                      &interaction.user.id,
                      &interaction.guild_id,
                      GuildId(u64::from_str(captures.get(1).ok_or(BotError::Internal(6))?.as_str()).map_err(|_| BotError::Internal(7))?),
@@ -489,7 +489,7 @@ impl PreviewsModule {
         for chunk in chunks {
             interaction.create_followup_message(&ctx.http, |m| m.embeds(chunk.to_vec())).await?;
         }
-        if downloaded.len() > 0 {
+        if !downloaded.is_empty() {
             interaction.create_followup_message(&ctx.http, |m| m.files(downloaded)).await?;
         }
 

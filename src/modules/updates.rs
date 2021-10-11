@@ -59,11 +59,11 @@ pub async fn check_update() -> Result<Option<UpdateAction>> {
 
             if remote_version > local_version {
                 let asset_url = latest.assets.into_iter().find(|s| s.name == "makita")
-                    .ok_or(BotError::Generic("Release assets missing".to_string()))?.browser_download_url;
+                    .ok_or_else(|| BotError::Generic("Release assets missing".to_string()))?.browser_download_url;
                 Ok(Some(UpdateAction {
                     download_url: asset_url.to_string(),
                     old_version: meta.tag.to_string(),
-                    new_version: latest.tag_name.clone(),
+                    new_version: latest.tag_name,
                 }))
             } else {
                 Ok(None)
@@ -124,7 +124,7 @@ impl UpdatesModule {
 
         FollowupBuilder::new()
             .description(msg)
-            .build_command(&ctx.http, &interaction)
+            .build_command(&ctx.http, interaction)
             .await
     }
     pub async fn update_command(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
@@ -135,7 +135,7 @@ impl UpdatesModule {
 
         FollowupBuilder::new()
             .description("Update successful, restarting...")
-            .build_command(&ctx.http, &interaction)
+            .build_command(&ctx.http, interaction)
             .await
     }
 
@@ -145,7 +145,7 @@ impl UpdatesModule {
 
         FollowupBuilder::new()
             .description("Restarting...")
-            .build_command(&ctx.http, &interaction)
+            .build_command(&ctx.http, interaction)
             .await
     }
 }

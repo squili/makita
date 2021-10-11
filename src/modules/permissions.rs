@@ -32,20 +32,20 @@ macro_rules! impl_permission_type {
         }
 
         impl PermissionType {
-            pub fn to_value(&self) -> &'static str {
+            pub fn as_value(&self) -> &'static str {
                 match self {
                     $(PermissionType::$enum => $value),+
                 }
             }
 
-            pub fn to_display(&self) -> &'static str {
+            pub fn as_display(&self) -> &'static str {
                 match self {
                     $(PermissionType::$enum => $display),+
                 }
             }
 
-            pub fn from_string(from: &String) -> Result<Self> {
-                match from.as_str() {
+            pub fn from_string(from: &str) -> Result<Self> {
+                match from {
                     $($value => Ok(PermissionType::$enum)),+,
                     _ => Err(Error::new(BotError::InvalidRequest(format!("Invalid permission name {}", from))))
                 }
@@ -101,18 +101,18 @@ impl PermissionEntry {
     }
 
     pub fn get(&self, ty: &PermissionType) -> &PermissionData {
-        self.data.get(&ty).unwrap()
+        self.data.get(ty).unwrap()
     }
 
     // Safety: Must update database yourself
     unsafe fn get_mut(&mut self, ty: &PermissionType) -> &mut PermissionData {
-        self.data.get_mut(&ty).unwrap()
+        self.data.get_mut(ty).unwrap()
     }
 
     pub async fn set<F>(&mut self, ty: &PermissionType, pool: &PgPool, mut func: F) -> Result<()>
     where F: FnMut(&mut PermissionData) {
-        let mut data = self.data.get_mut(&ty).unwrap();
-        func(&mut data);
+        let data = self.data.get_mut(ty).unwrap();
+        func(data);
         sqlx::query("insert into Permissions (type, guild_id, overwrites, roles, users) values ($1, $2, $3, $4, $5)\
                          on conflict on constraint permissions_idx do update set overwrites = $3, roles = $4, users = $5")
             .bind(&ty)
@@ -175,18 +175,14 @@ impl PermissionsModule {
         Ok(())
     }
 
-    fn entry_perms_check(ty: &PermissionType, entry: &PermissionEntry, highest: &DiscordPermissions, user: &UserId, roles: &Vec<RoleId>) -> bool {
-        let data = entry.get(&ty);
-        if (data.discord.bits > 0 && highest.contains(data.discord))
-            || data.users.contains(user)
-            || roles.iter().any(|item| data.roles.contains(item)) {
-            true
-        } else {
-            false
-        }
+    fn entry_perms_check(ty: &PermissionType, entry: &PermissionEntry, highest: &DiscordPermissions, user: &UserId, roles: &[RoleId]) -> bool {
+        let data = entry.get(ty);
+        (data.discord.bits > 0 && highest.contains(data.discord)) || data.users.contains(user)
+            || roles.iter().any(|item| data.roles.contains(item))
     }
 
-    pub async fn check<'a>(&self, ctx: &BotContext, ty: &'a PermissionType, guild: &GuildId, user: &UserId, roles: &Vec<RoleId>) -> Result<Option<&'a PermissionType>> {
+    #[allow(clippy::needless_lifetimes)] // lifetimes not actually needless
+    pub async fn check<'a>(&self, ctx: &BotContext, ty: &'a PermissionType, guild: &GuildId, user: &UserId, roles: &[RoleId]) -> Result<Option<&'a PermissionType>> {
         if self.sudo_enabled.load(Ordering::Relaxed) && user == &self.owner_id {
               return Ok(None)
         }
@@ -197,15 +193,15 @@ impl PermissionsModule {
         }
         let mut highest_permissions = DiscordPermissions::empty();
         for role in roles {
-            let role = guild_data.roles.get(&role).ok_or(BotError::CacheMissing)?;
+            let role = guild_data.roles.get(role).ok_or(BotError::CacheMissing)?;
             highest_permissions.insert(role.permissions);
         }
         if highest_permissions.administrator() {
             return Ok(None);
         }
-        self.guild_read(&guild, |entry| {
-            if Self::entry_perms_check(&PermissionType::Administrator, &entry, &highest_permissions, &user, &roles) ||
-                Self::entry_perms_check(&ty, &entry, &highest_permissions, &user, &roles) {
+        self.guild_read(guild, |entry| {
+            if Self::entry_perms_check(&PermissionType::Administrator, entry, &highest_permissions, user, roles) ||
+                Self::entry_perms_check(ty, entry, &highest_permissions, user, roles) {
                 Ok(None)
             } else {
                 Ok(Some(ty))
@@ -219,7 +215,7 @@ impl PermissionsModule {
 
         FollowupBuilder::new()
             .description(format!("Sudo mode set to {}", if !sudo_enabled { "enabled" } else { "disabled" }))
-            .build_command(&ctx.http, &interaction)
+            .build_command(&ctx.http, interaction)
             .await
     }
 
@@ -230,8 +226,8 @@ impl PermissionsModule {
                     c.create_select_menu(|d|
                         d
                             .custom_id(build_custom_id(&CustomIdType::ListPermissions, &None))
-                            .options(|mut e| {
-                                PermissionType::build_select_menu_options(&mut e);
+                            .options(|e| {
+                                PermissionType::build_select_menu_options(e);
                                 e
                             })
                     )
@@ -244,7 +240,7 @@ impl PermissionsModule {
 
     pub async fn permissions_list_component(&self, ctx: &BotContext, interaction: &MessageComponentInteraction) -> Result<()> {
         let ty = PermissionType::from_string(
-            interaction.data.values.get(0).ok_or(BotError::InvalidRequest("Missing component values".to_string()))?)?;
+            interaction.data.values.get(0).ok_or_else(|| BotError::InvalidRequest("Missing component values".to_string()))?)?;
 
         let (permissions, roles, users) = self.guild_read(&interaction.guild_id.ok_or(BotError::GuildOnly)?, |entry| {
             let data = entry.get(&ty);
@@ -255,23 +251,23 @@ impl PermissionsModule {
 
         interaction.edit_original_interaction_response(&ctx.http, |a|
             a.create_embed(|b| {
-                if roles.len() > 0 {
+                if !roles.is_empty() {
                     b.field("Roles", roles, false);
                 }
-                if users.len() > 0 {
+                if !users.is_empty() {
                     b.field("Users", users, false);
                 }
-                b.field("Default", permissions, false).title(ty.to_display())
+                b.field("Default", permissions, false).title(ty.as_display())
             }).components(|b|
                 b.create_action_row(|c|
                     c.create_select_menu(|d|
                         d
                             .custom_id(build_custom_id(&CustomIdType::ListPermissions, &None))
-                            .options(|mut e| {
-                                PermissionType::build_select_menu_options(&mut e);
+                            .options(|e| {
+                                PermissionType::build_select_menu_options(e);
                                 e
                             })
-                            .placeholder(ty.to_display())
+                            .placeholder(ty.as_display())
                     )
                 )
             )
@@ -283,7 +279,7 @@ impl PermissionsModule {
     pub async fn permissions_set(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
         let ty = PermissionType::from_string(&args.get_string("permission")?)?;
         let permissions = DiscordPermissions::from_bits(args.get_integer("bits")? as u64)
-            .ok_or(BotError::InvalidRequest("Invalid permissions bits".to_string()))?;
+            .ok_or_else(|| BotError::InvalidRequest("Invalid permissions bits".to_string()))?;
 
         self.write_guild_async(&interaction.guild_id.ok_or(BotError::GuildOnly)?, |entry: &mut PermissionEntry, _| async move {
             entry.set(&ty, &self.pool, |data| {
@@ -293,7 +289,7 @@ impl PermissionsModule {
 
         FollowupBuilder::new()
             .description("Success")
-            .build_command(&ctx.http, &interaction)
+            .build_command(&ctx.http, interaction)
             .await
     }
 
@@ -310,9 +306,8 @@ impl PermissionsModule {
             }
         }
 
-        match (user, role_id) {
-            (None, None) => return Err(Error::new(BotError::Generic("Must specify either `user` or `role`".into()))),
-            _ => {}
+        if let (None, None) = (user, role_id) {
+            return Err(Error::new(BotError::Generic("Must specify either `user` or `role`".into())))
         }
 
         self.write_guild_async(&guild_id, |entry: &mut PermissionEntry, _| async move {
@@ -328,7 +323,7 @@ impl PermissionsModule {
 
         FollowupBuilder::new()
             .description("Success")
-            .build_command(&ctx.http, &interaction)
+            .build_command(&ctx.http, interaction)
             .await
     }
 
@@ -337,9 +332,8 @@ impl PermissionsModule {
         let user = args.get_user("user").map(|s| s.get_user().id).ok();
         let role = args.get_role("role").map(|s| s.id).ok();
 
-        match (user, role) {
-            (None, None) => return Err(Error::new(BotError::Generic("Must specify either `user` or `role`".into()))),
-            _ => {}
+        if let (None, None) = (user, role) {
+            return Err(Error::new(BotError::Generic("Must specify either `user` or `role`".into())))
         }
 
         let mut user_found = true;

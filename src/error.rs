@@ -27,7 +27,7 @@ impl Display for BotError {
             BotError::Generic(s) => f.write_str(s),
             BotError::Internal(s) => write!(f, "Internal error code `{}`", s),
             BotError::GuildOnly => f.write_str("Command must be run in a server"),
-            BotError::Permissions(ty) => write!(f, "Missing permission `{}`", ty.to_value()),
+            BotError::Permissions(ty) => write!(f, "Missing permission `{}`", ty.as_value()),
             BotError::CacheMissing => f.write_str("Cache failure, please try again later"),
             BotError::InvalidRequest(msg) => write!(f, "Invalid request: `{}`", msg),
             BotError::WrongGuild => f.write_str("Can't refer to data from another server"),

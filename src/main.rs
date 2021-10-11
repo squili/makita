@@ -104,9 +104,9 @@ async fn start() -> Result<()> {
     let handler = Handler {
         pool: pool.clone(),
         application_id: ApplicationId(application_id),
-        owner_id: config.owner_id.clone(),
+        owner_id: config.owner_id,
         updates: Arc::new(modules::UpdatesModule::new(shutdown_tx.clone())),
-        permissions: Arc::new(modules::PermissionsModule::new(config.owner_id.clone(), pool.clone())),
+        permissions: Arc::new(modules::PermissionsModule::new(config.owner_id, pool.clone())),
         previews: Arc::new(modules::PreviewsModule::new()?),
     };
 
@@ -126,7 +126,7 @@ async fn start() -> Result<()> {
 
     info!("initializing application commands");
     let command_data = include_bytes!(env!("MAKITA_SLASH_LOCATION"));
-    let mut iter = command_data.split(|c| c == &('\n' as u8));
+    let mut iter = command_data.split(|c| c == &b'\n');
 
     let mut req = RequestBuilder::new(RouteInfo::CreateGuildApplicationCommand {
         application_id: client.cache_and_http.http.application_id,

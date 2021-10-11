@@ -315,8 +315,7 @@ pub trait FromSlashMap {
 pub fn process(interaction: &ApplicationCommandInteractionData) -> (String, SlashMap) {
     // traverse
     let mut options = &interaction.options;
-    let mut path = Vec::new();
-    path.push(interaction.name.clone());
+    let mut path = vec![interaction.name.clone()];
 
     loop {
         match options.get(0) {
