@@ -17,7 +17,7 @@ jobs:
       - name: Cache
         uses: Swatinem/rust-cache@v1
       - name: Build
-        run: cargo +nightly build --release
+        run: cargo build --release
         env:
           GIT_TAG: ${{ steps.tag.outputs.tag }}
           GIT_COMMIT: ${{ github.sha }}
