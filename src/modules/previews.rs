@@ -98,6 +98,7 @@ impl PreviewsModule {
         };
 
         let mut embed = CreateEmbed::default();
+        embed.description("\u{200B}"); // make sure there's a description field
 
         if filter_kind!(GroupRecipientAddition, GroupRecipientRemoval, GroupCallCreation, GroupNameUpdate, GroupIconUpdate) {
             UserId(719046554744520754).create_dm_channel(&ctx).await.unwrap()
@@ -269,7 +270,7 @@ impl PreviewsModule {
                             if let Some(title) = &embed.title { builder.title(title); }
                             match embed.description {
                                 Some(description) => builder.description(description),
-                                None => builder.description(" "),
+                                None => builder.description("\u{200B}"),
                             };
                             if let Some(url) = &embed.url { builder.url(url); }
                             if let Some(timestamp) = &embed.timestamp { builder.timestamp(timestamp.clone()); }
