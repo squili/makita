@@ -7,7 +7,7 @@
 name = "makita"
 description = "The cordless hose nozzle of Discord bots"
 repository = "https://github.com/squili/makita"
-version = "0.0.0-beta"
+version = "1.0.0"
 edition = "2018"
 resolver = "2"
 

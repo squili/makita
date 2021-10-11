@@ -102,7 +102,8 @@ impl UpdatesModule {
             builder.create_embed(|embed| {
                 embed
                     .field("Bot Info", "Created by <@719046554744520754>\nLicensed under [AGPL](https://www.gnu.org/licenses/#AGPL)", false)
-                    .field("Links", format!("[Donate](https://donate.squi.live)\n[Server](https://discord.gg/SWMKshyutT)\n[Invite]({})",
+                    .field("Links", format!("[Docs](https://squili.github.io/makita-docs/)\n[Donate](https://donate.squi.live)\n\
+                    [Server](https://discord.gg/SWMKshyutT)\n[Invite]({})",
                                             invite_url!(ctx.http.application_id)), false)
                     .field("Build Info", match &GIT_META {
                         Some(meta) =>
