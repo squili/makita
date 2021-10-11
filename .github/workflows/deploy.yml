@@ -14,8 +14,6 @@ jobs:
         uses: dawidd6/action-get-tag@v1
       - name: Init Rust
         uses: actions-rs/toolchain@v1
-        with:
-          toolchain: nightly-2021-10-10
       - name: Cache
         uses: Swatinem/rust-cache@v1
       - name: Build
