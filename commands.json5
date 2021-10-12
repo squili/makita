@@ -75,7 +75,8 @@
             choices: [
               { name: 'Administrator', value: 'Administrator' },
               { name: 'Manage Permissions', value: 'ManagePermissions' },
-              { name: 'Manage Previews', value: 'ManagePreviews' }
+              { name: 'Manage Previews', value: 'ManagePreviews' },
+              { name: 'Create Archive', value: 'CreateArchive' }
             ]
           },
           {
@@ -99,7 +100,8 @@
             choices: [
               { name: 'Administrator', value: 'Administrator' },
               { name: 'Manage Permissions', value: 'ManagePermissions' },
-              { name: 'Manage Previews', value: 'ManagePreviews' }
+              { name: 'Manage Previews', value: 'ManagePreviews' },
+              { name: 'Create Archive', value: 'CreateArchive' }
             ]
           },
           {
@@ -127,7 +129,8 @@
             choices: [
               { name: 'Administrator', value: 'Administrator' },
               { name: 'Manage Permissions', value: 'ManagePermissions' },
-              { name: 'Manage Previews', value: 'ManagePreviews' }
+              { name: 'Manage Previews', value: 'ManagePreviews' },
+              { name: 'Create Archive', value: 'CreateArchive' }
             ]
           },
           {

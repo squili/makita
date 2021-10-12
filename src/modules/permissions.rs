@@ -99,6 +99,7 @@ impl PermissionEntry {
         entry.data.insert(PermissionType::Administrator, PermissionData::default(&PermissionType::Administrator));
         entry.data.insert(PermissionType::ManagePermissions, PermissionData::default(&PermissionType::ManagePermissions));
         entry.data.insert(PermissionType::ManagePreviews, PermissionData::default(&PermissionType::ManagePreviews));
+        entry.data.insert(PermissionType::CreateArchive, PermissionData::default(&PermissionType::CreateArchive));
         entry
     }
 
