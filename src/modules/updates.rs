@@ -98,6 +98,7 @@ impl UpdatesModule {
     }
 
     pub async fn info_command(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
+        interaction.defer(&ctx).await?;
         interaction.create_followup_message(&ctx, |builder| {
             builder.create_embed(|embed| {
                 embed
@@ -118,6 +119,7 @@ impl UpdatesModule {
     }
 
     pub async fn check_command(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
+        interaction.defer(&ctx).await?;
         let msg = match check_update().await? {
             Some(update) => format!("Update available from `{}` to `{}`", update.old_version, update.new_version),
             None => "No updates found".to_string()
@@ -125,10 +127,11 @@ impl UpdatesModule {
 
         FollowupBuilder::new()
             .description(msg)
-            .build_command(&ctx.http, interaction)
+            .build_command_followup(&ctx.http, interaction)
             .await
     }
     pub async fn update_command(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
+        interaction.defer(&ctx).await?;
         do_update().await?;
 
         RESTARTING.store(true, Ordering::SeqCst);
@@ -136,17 +139,18 @@ impl UpdatesModule {
 
         FollowupBuilder::new()
             .description("Update successful, restarting...")
-            .build_command(&ctx.http, interaction)
+            .build_command_followup(&ctx.http, interaction)
             .await
     }
 
     pub async fn restart_command(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
+        interaction.defer(&ctx).await?;
         RESTARTING.store(true, Ordering::SeqCst);
         self.shutdown_tx.send(()).await?;
 
         FollowupBuilder::new()
             .description("Restarting...")
-            .build_command(&ctx.http, interaction)
+            .build_command_followup(&ctx.http, interaction)
             .await
     }
 }

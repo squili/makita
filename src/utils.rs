@@ -12,6 +12,7 @@ use serenity::http::{CacheHttp, Http};
 use serenity::model::channel::MessageReference;
 use serenity::model::id::{ChannelId, GuildId};
 use serenity::model::interactions::application_command::ApplicationCommandInteraction;
+use serenity::model::interactions::{InteractionApplicationCommandCallbackDataFlags, InteractionResponseType};
 use serenity::model::interactions::message_component::{ButtonStyle, MessageComponentInteraction};
 use sqlx::PgPool;
 use crate::custom_ids::{build_custom_id, CustomIdType};
@@ -79,6 +80,7 @@ pub fn default_arg<T, U: Default>(_: T) -> U { U::default() }
 pub struct FollowupBuilder {
     title: Option<String>,
     description: Option<String>,
+    ephemeral: bool,
 }
 
 macro builder_entry {
@@ -93,7 +95,7 @@ macro builder_entry {
 
 macro build_entry {
     ($self: expr, $builder: expr, $name: ident) => {
-        match $self.$name {
+        match &$self.$name {
             Some(s) => { $builder.$name(s); }
             None => {}
         }
@@ -105,12 +107,78 @@ impl FollowupBuilder {
         Default::default()
     }
 
-    pub async fn build_command<T: AsRef<Http>>(self, http: T, interaction: &ApplicationCommandInteraction) -> Result<()> {
-        self._build_command(http.as_ref(), interaction).await
+    pub async fn build_command_response<T: AsRef<Http>>(self, http: T, interaction: &ApplicationCommandInteraction) -> Result<()> {
+        interaction.create_interaction_response(&http, |r| {
+            r
+                .kind(InteractionResponseType::ChannelMessageWithSource)
+                .interaction_response_data(|m| {
+                    m.create_embed(|e| {
+                        build_entry!(self, e, title);
+                        build_entry!(self, e, description);
+                        e
+                    });
+                    if self.ephemeral {
+                        m.flags(InteractionApplicationCommandCallbackDataFlags::EPHEMERAL);
+                    }
+                    m
+                })
+        }).await?;
+
+        Ok(())
     }
 
-    async fn _build_command(self, http: &Http, interaction: &ApplicationCommandInteraction) -> Result<()> {
-        interaction.create_followup_message(&http, |m|
+    pub async fn build_command_edit<T: AsRef<Http>>(self, http: T, interaction: &ApplicationCommandInteraction) -> Result<()> {
+        interaction.edit_original_interaction_response(&http, |m|
+            m.create_embed(|e| {
+                build_entry!(self, e, title);
+                build_entry!(self, e, description);
+                e
+            })
+        ).await?;
+
+        Ok(())
+    }
+
+    pub async fn build_command_followup<T: AsRef<Http>>(self, http: T, interaction: &ApplicationCommandInteraction) -> Result<()> {
+        interaction.create_followup_message(&http, |m| {
+            m.create_embed(|e| {
+                build_entry!(self, e, title);
+                build_entry!(self, e, description);
+                e
+            });
+            if self.ephemeral {
+                m.flags(InteractionApplicationCommandCallbackDataFlags::EPHEMERAL);
+            }
+            m
+        }).await?;
+
+        Ok(())
+    }
+
+    #[allow(unused)]
+    pub async fn build_component_response<T: AsRef<Http>>(self, http: T, interaction: &MessageComponentInteraction) -> Result<()> {
+        interaction.create_interaction_response(&http, |r| {
+            r
+                .kind(InteractionResponseType::ChannelMessageWithSource)
+                .interaction_response_data(|m| {
+                    m.create_embed(|e| {
+                        build_entry!(self, e, title);
+                        build_entry!(self, e, description);
+                        e
+                    });
+                    if self.ephemeral {
+                        m.flags(InteractionApplicationCommandCallbackDataFlags::EPHEMERAL);
+                    }
+                    m
+                })
+        }).await?;
+
+        Ok(())
+    }
+
+    #[allow(unused)]
+    pub async fn build_component_edit<T: AsRef<Http>>(self, http: T, interaction: &MessageComponentInteraction) -> Result<()> {
+        interaction.edit_original_interaction_response(&http, |m|
             m.create_embed(|e| {
                 build_entry!(self, e, title);
                 build_entry!(self, e, description);
@@ -122,21 +190,25 @@ impl FollowupBuilder {
     }
 
     #[allow(unused)]
-    pub async fn build_component<T: AsRef<Http>>(self, http: T, interaction: &MessageComponentInteraction) -> Result<()> {
-        self._build_component(http.as_ref(), interaction).await
-    }
-
-    #[allow(unused)]
-    async fn _build_component(self, http: &Http, interaction: &MessageComponentInteraction) -> Result<()> {
-        interaction.create_followup_message(&http, |m|
+    pub async fn build_component_followup<T: AsRef<Http>>(self, http: T, interaction: &MessageComponentInteraction) -> Result<()> {
+        interaction.create_followup_message(&http, |m| {
             m.create_embed(|e| {
                 build_entry!(self, e, title);
                 build_entry!(self, e, description);
                 e
-            })
-        ).await?;
+            });
+            if self.ephemeral {
+                m.flags(InteractionApplicationCommandCallbackDataFlags::EPHEMERAL);
+            }
+            m
+        }).await?;
 
         Ok(())
+    }
+
+    pub fn ephemeral(mut self) -> Self {
+        self.ephemeral = true;
+        self
     }
 
     builder_entry!(String, title);

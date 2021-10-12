@@ -5,7 +5,7 @@
 
 use std::borrow::Cow;
 use anyhow::{Error, Result};
-use serenity::model::channel::{Message, GuildChannel, Attachment, MessageType, MessageFlags};
+use serenity::model::channel::{Message, GuildChannel, Attachment, MessageType, MessageFlags, PartialChannel};
 use serenity::model::id::{GuildId, ChannelId, MessageId, UserId};
 use sqlx::{PgPool, Row};
 use regex::Regex;
@@ -15,19 +15,27 @@ use std::str::FromStr;
 use std::sync::Arc;
 use serenity::builder::CreateEmbed;
 use serenity::http::AttachmentType;
-use serenity::model::guild::Guild;
+use serenity::model::guild::{Guild, Member};
 use crate::utils::{remove_indexes, SqlId, default_arg, FollowupBuilder, BotContext, Link};
 use sqlx::postgres::PgRow;
 use crate::decode::SlashMap;
 use serenity::model::interactions::application_command::ApplicationCommandInteraction;
+use serenity::model::interactions::InteractionApplicationCommandCallbackDataFlags;
 use serenity::model::misc::Mentionable;
+use serenity::model::prelude::InteractionResponseType;
 use crate::error::BotError;
-use crate::macros::impl_cache_functions;
+use crate::macros::{impl_cache_functions, debug};
 use crate::tasks::TaskMessage;
+
+#[derive(Default)]
+pub struct PreviewsConfig {
+    auto_channels: Vec<ChannelId>,
+    archive_channel: Option<ChannelId>,
+}
 
 pub struct PreviewsModule {
     link_regex: Regex,
-    cache: RwLock<HashMap<GuildId, Vec<ChannelId>>>,
+    cache: RwLock<HashMap<GuildId, PreviewsConfig>>,
 }
 
 impl PreviewsModule {
@@ -40,29 +48,35 @@ impl PreviewsModule {
 }
 
 impl PreviewsModule {
-    impl_cache_functions!(read_cache, write_cache, write_cache_async, GuildId, Vec<ChannelId>, cache, default_arg);
+    impl_cache_functions!(read_cache, write_cache, write_cache_async, GuildId, PreviewsConfig, cache, default_arg);
 
     pub async fn initialize(instance: Arc<Self>, mut task_rx: broadcast::Receiver<TaskMessage>, pool: &PgPool) -> Result<()> {
-        {
-            // load data from db
-            let mut handle = instance.cache.write().await;
-            let rows = sqlx::query("select guild_id, channel_id from PreviewChannels")
-                .map(|row: PgRow| {
-                    (row.get::<SqlId<GuildId>, &str>("guild_id").0, row.get::<SqlId<ChannelId>, &str>("channel_id").0)
-                })
-                .fetch_all(pool)
-                .await?;
+        // load auto channels from db
+        let rows = sqlx::query("select guild_id, channel_id from PreviewChannels")
+            .map(|row: PgRow| {
+                (row.get::<SqlId<GuildId>, &str>("guild_id").0, row.get::<SqlId<ChannelId>, &str>("channel_id").0)
+            })
+            .fetch_all(pool)
+            .await?;
 
-            for row in rows {
-                match handle.get_mut(&row.0) {
-                    Some(s) => {
-                        s.push(row.1);
-                    }
-                    None => {
-                        handle.insert(row.0, vec![row.1]);
-                    }
-                }
-            }
+        for row in rows {
+            instance.write_cache(&row.0, |data| {
+                data.auto_channels.push(row.1);
+            }).await;
+        }
+
+        // load archive channels from db
+        let rows = sqlx::query("select guild_id, channel_id from ArchiveChannel")
+            .map(|row: PgRow| {
+                (row.get::<SqlId<GuildId>, &str>("guild_id").0, row.get::<SqlId<ChannelId>, &str>("channel_id").0)
+            })
+            .fetch_all(pool)
+            .await?;
+
+        for row in rows {
+            instance.write_cache(&row.0, |data| {
+                data.archive_channel = Some(row.1);
+            }).await;
         }
 
         // task event handling
@@ -311,8 +325,8 @@ impl PreviewsModule {
         }
 
         // detect if we should scan
-        let should_scan = self.read_cache(&message.guild_id.unwrap(), |cached: &Vec<ChannelId>| {
-            cached.contains(&message.channel_id)
+        let should_scan = self.read_cache(&message.guild_id.unwrap(), |cached| {
+            cached.auto_channels.contains(&message.channel_id)
         }).await;
         if !should_scan {
             return Ok(());
@@ -351,14 +365,14 @@ impl PreviewsModule {
 
     pub async fn guild_data(&self, ctx: &BotContext, guild: &Guild) -> Result<()> {
         // remove invalid channels
-        let entries = self.write_cache(&guild.id, |cached: &mut Vec<ChannelId>| {
+        let entries = self.write_cache(&guild.id, |cached| {
             let mut indexes = Vec::new();
-            for (index, channel) in cached.iter().enumerate() {
+            for (index, channel) in cached.auto_channels.iter().enumerate() {
                 if !guild.channels.contains_key(channel) {
                     indexes.push(index);
                 }
             }
-            remove_indexes(cached, &indexes)
+            remove_indexes(&mut cached.auto_channels, &indexes)
         }).await;
 
         for entry in entries {
@@ -373,12 +387,12 @@ impl PreviewsModule {
 
     pub async fn channel_delete(&self, ctx: &BotContext, channel: &GuildChannel) -> Result<()> {
         // remove invalid channel
-        let remove = self.read_cache(&channel.guild_id, |cached: &Vec<ChannelId>| {
-            cached.binary_search(&channel.id).ok()
+        let remove = self.read_cache(&channel.guild_id, |cached| {
+            cached.auto_channels.binary_search(&channel.id).ok()
         }).await;
         if let Some(s) = remove {
-            self.write_cache(&channel.guild_id, |cached: &mut Vec<ChannelId>| {
-                cached.remove(s);
+            self.write_cache(&channel.guild_id, |cached| {
+                cached.auto_channels.remove(s);
             }).await;
             sqlx::query("delete from PreviewChannels where guild_id = $1 and channel_id = $2")
                 .bind(SqlId(channel.guild_id))
@@ -390,14 +404,15 @@ impl PreviewsModule {
     }
 
     pub async fn previews_add(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
+        interaction.defer(&ctx).await?;
         let target = args.get_channel("target")?;
         let guild_id = interaction.guild_id.ok_or(BotError::GuildOnly)?;
 
         let already_added = self.write_cache(&guild_id, |data| {
-            if data.contains(&target.id) {
+            if data.auto_channels.contains(&target.id) {
                 true
             } else {
-                data.push(target.id);
+                data.auto_channels.push(target.id);
                 false
             }
         }).await;
@@ -413,18 +428,19 @@ impl PreviewsModule {
 
         FollowupBuilder::new()
             .description("Success")
-            .build_command(&ctx.http, interaction)
+            .build_command_followup(&ctx, interaction)
             .await
     }
 
     pub async fn previews_remove(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
+        interaction.defer(&ctx).await?;
         let target = args.get_channel("target")?;
         let guild_id = interaction.guild_id.ok_or(BotError::GuildOnly)?;
 
         let not_in_previews = self.write_cache(&guild_id, |data| {
-            match data.binary_search(&target.id) {
+            match data.auto_channels.binary_search(&target.id) {
                 Ok(s) => {
-                    data.remove(s);
+                    data.auto_channels.remove(s);
                     false
                 },
                 Err(_) => true,
@@ -442,15 +458,16 @@ impl PreviewsModule {
 
         FollowupBuilder::new()
             .description("Success")
-            .build_command(&ctx.http, interaction)
+            .build_command_followup(&ctx, interaction)
             .await
     }
 
     pub async fn previews_list(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
+        interaction.defer(&ctx).await?;
         let mut items = vec!["**Channels**".to_string()];
 
         self.read_cache(&interaction.guild_id.ok_or(BotError::GuildOnly)?, |data| {
-            for channel in data {
+            for channel in &data.auto_channels {
                 items.push(channel.mention().to_string())
             }
         }).await;
@@ -458,17 +475,18 @@ impl PreviewsModule {
         if items.len() == 1 {
             return FollowupBuilder::new()
                 .description("No channels")
-                .build_command(&ctx.http, interaction)
+                .build_command_followup(&ctx.http, interaction)
                 .await;
         }
 
         FollowupBuilder::new()
             .description(items.join("\n"))
-            .build_command(&ctx.http, interaction)
+            .build_command_followup(&ctx, interaction)
             .await
     }
 
     pub async fn previews_view(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
+        interaction.defer(&ctx).await?;
         let target = args.get_string("target")?;
 
         let captures = self.link_regex.captures(&target).ok_or_else(|| BotError::Generic("Malformed link".to_string()))?;
@@ -495,5 +513,90 @@ impl PreviewsModule {
         }
 
         Ok(())
+    }
+
+    pub async fn previews_archive(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
+        interaction.defer(&ctx).await?;
+        let guild_id = interaction.guild_id.unwrap();
+        match args.get_channel("target").ok() {
+            // set
+            Some(target) => {
+                self.write_cache(&guild_id, |data| {
+                    data.archive_channel = Some(target.id);
+                }).await;
+
+                sqlx::query("insert into ArchiveChannel (guild_id, channel_id) values ($1, $2) on conflict on constraint archive_idx do update set channel_id = $2")
+                    .bind(&SqlId(guild_id))
+                    .bind(&SqlId(target.id))
+                    .execute(&ctx.pool)
+                    .await?;
+            }
+            // unset
+            None => {
+                self.write_cache(&guild_id, |data| {
+                    data.archive_channel = None;
+                }).await;
+
+                sqlx::query("delete from ArchiveChannel where guild_id = $1")
+                    .bind(&SqlId(guild_id))
+                    .execute(&ctx.pool)
+                    .await?;
+            }
+        }
+
+        FollowupBuilder::new()
+            .description("Success")
+            .build_command_followup(&ctx, interaction)
+            .await
+    }
+
+    pub async fn previews_archive_context(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, message: &Message) -> Result<()> {
+        FollowupBuilder::new()
+            .description("Running...")
+            .ephemeral()
+            .build_command_response(ctx, interaction)
+            .await?;
+
+        let guild_id = interaction.guild_id.unwrap();
+        let archive_channel = self.read_cache(&guild_id, |data| {
+            data.archive_channel.clone()
+        }).await.ok_or_else(|| BotError::Generic("Archive channel not set".to_string()))?;
+
+        let (source_embeds, attachments) =
+            self.preview(ctx, &interaction.user.id, &Some(guild_id), guild_id.clone(),
+                         interaction.channel_id, message.id).await?;
+
+        // add footer to first embed
+        let mut embeds = Vec::new();
+        let mut iter = source_embeds.into_iter();
+        let mut embed = iter.next().unwrap();
+        embed.footer(|f| {
+            f
+                .text(format!("Requested by {}#{}", interaction.user.name, interaction.user.discriminator))
+                .icon_url(match &interaction.member {
+                    Some(member) => member.face(),
+                    None => interaction.user.face(),
+                })
+        });
+        embeds.push(embed);
+        embeds.extend(iter);
+
+        let chunks = embeds.chunks(10);
+        let mut downloaded = Vec::with_capacity(attachments.len());
+        for attachment in attachments {
+            let bytes = attachment.download().await?;
+            downloaded.push(AttachmentType::Bytes { data: Cow::from(bytes), filename: attachment.filename })
+        }
+        for chunk in chunks {
+            archive_channel.send_message(ctx, |m| m.set_embeds(chunk.to_vec())).await?;
+        }
+        if !downloaded.is_empty() {
+            archive_channel.send_message(ctx, |m| m.files(downloaded)).await?;
+        }
+
+        FollowupBuilder::new()
+            .description("Success")
+            .build_command_edit(ctx, interaction)
+            .await
     }
 }

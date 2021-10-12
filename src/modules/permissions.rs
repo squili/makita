@@ -62,7 +62,8 @@ macro_rules! impl_permission_type {
 impl_permission_type!(
     Administrator, "Administrator", "Administrator", "Access to all permissions",
     ManagePermissions, "ManagePermissions", "Manage Permissions", "Manage bot permissions",
-    ManagePreviews, "ManagePreviews", "Manage Previews", "Manage preview configuration"
+    ManagePreviews, "ManagePreviews", "Manage Previews", "Manage preview configuration",
+    CreateArchive, "CreateArchive", "Create Archive", "Create entries in the archive channel"
 );
 
 pub struct PermissionData {
@@ -81,6 +82,7 @@ impl PermissionData {
             PermissionType::Administrator => Self::new(&DiscordPermissions::ADMINISTRATOR),
             PermissionType::ManagePermissions => Self::new(&DiscordPermissions::ADMINISTRATOR),
             PermissionType::ManagePreviews => Self::new(&DiscordPermissions::MANAGE_GUILD),
+            PermissionType::CreateArchive => Self::new(&DiscordPermissions::MANAGE_MESSAGES),
         }
     }
 }
@@ -210,16 +212,18 @@ impl PermissionsModule {
     }
 
     pub async fn makita_sudo(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
+        interaction.defer(&ctx).await?;
         let sudo_enabled = self.sudo_enabled.load(Ordering::Relaxed);
         self.sudo_enabled.store(!sudo_enabled, Ordering::Relaxed);
 
         FollowupBuilder::new()
             .description(format!("Sudo mode set to {}", if !sudo_enabled { "enabled" } else { "disabled" }))
-            .build_command(&ctx.http, interaction)
+            .build_command_followup(&ctx.http, interaction)
             .await
     }
 
     pub async fn permissions_list(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
+        interaction.defer(&ctx).await?;
         interaction.create_followup_message(&ctx.http, |a|
             a.components(|b|
                 b.create_action_row(|c|
@@ -239,6 +243,7 @@ impl PermissionsModule {
     }
 
     pub async fn permissions_list_component(&self, ctx: &BotContext, interaction: &MessageComponentInteraction) -> Result<()> {
+        interaction.defer(&ctx).await?;
         let ty = PermissionType::from_string(
             interaction.data.values.get(0).ok_or_else(|| BotError::InvalidRequest("Missing component values".to_string()))?)?;
 
@@ -249,7 +254,7 @@ impl PermissionsModule {
              data.users.iter().map(|x| x.mention().to_string()).collect::<Vec<String>>().join("\n"))
         }).await;
 
-        interaction.edit_original_interaction_response(&ctx.http, |a|
+        interaction.create_followup_message(&ctx.http, |a|
             a.create_embed(|b| {
                 if !roles.is_empty() {
                     b.field("Roles", roles, false);
@@ -277,6 +282,7 @@ impl PermissionsModule {
     }
 
     pub async fn permissions_set(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
+        interaction.defer(&ctx).await?;
         let ty = PermissionType::from_string(&args.get_string("permission")?)?;
         let permissions = DiscordPermissions::from_bits(args.get_integer("bits")? as u64)
             .ok_or_else(|| BotError::InvalidRequest("Invalid permissions bits".to_string()))?;
@@ -289,11 +295,12 @@ impl PermissionsModule {
 
         FollowupBuilder::new()
             .description("Success")
-            .build_command(&ctx.http, interaction)
+            .build_command_followup(&ctx.http, interaction)
             .await
     }
 
     pub async fn permissions_add(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
+        interaction.defer(&ctx).await?;
         let ty = PermissionType::from_string(&args.get_string("permission")?)?;
         let user = args.get_user("user").map(|s| s.get_user().id).ok();
         let role_object = args.get_role("role").ok();
@@ -323,11 +330,12 @@ impl PermissionsModule {
 
         FollowupBuilder::new()
             .description("Success")
-            .build_command(&ctx.http, interaction)
+            .build_command_followup(&ctx.http, interaction)
             .await
     }
 
     pub async fn permissions_remove(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
+        interaction.defer(&ctx).await?;
         let ty = PermissionType::from_string(&args.get_string("permission")?)?;
         let user = args.get_user("user").map(|s| s.get_user().id).ok();
         let role = args.get_role("role").map(|s| s.id).ok();
@@ -365,7 +373,7 @@ impl PermissionsModule {
 
         FollowupBuilder::new()
             .description("Success")
-            .build_command(&ctx.http, interaction)
+            .build_command_followup(&ctx.http, interaction)
             .await
     }
 }

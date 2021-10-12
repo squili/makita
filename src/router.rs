@@ -24,12 +24,12 @@ macro ensure_guild {
 }
 
 macro ensure_permission_base {
-    ($ctx: expr, $cache: expr, $interaction: expr, $application_id: expr, $permission: path, $command: expr) => {
+    ($ctx: expr, $cache: expr, $interaction: expr, $application_id: expr, $permission: ident, $command: expr) => {
         ensure_guild!(
             $interaction,
             if let Some(missing) = $cache.check(
                 &$ctx,
-                &$permission,
+                &PermissionType::$permission,
                 &$interaction.guild_id.unwrap(),
                 &$interaction.user.id,
                 &$interaction.member.as_ref().ok_or(BotError::CacheMissing)?.roles).await?
@@ -54,7 +54,7 @@ macro ensure_owner_base {
 
 pub async fn chat_input_router(handler: &Handler, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
     macro ensure_permission {
-        ($permission: path, $command: expr) => {
+        ($permission: ident, $command: expr) => {
             ensure_permission_base!(ctx, handler.permissions, interaction, handler.application_id, $permission, $command)
         }
     }
@@ -76,13 +76,14 @@ pub async fn chat_input_router(handler: &Handler, ctx: &BotContext, interaction:
         "makita update" => ensure_owner!(handler.updates.update_command(ctx, interaction).await),
         "makita restart" => ensure_owner!(handler.updates.restart_command(ctx, interaction).await),
         "makita debug" => ensure_owner!(crate::utils::debug_command(ctx, interaction).await),
-        "permissions list" => ensure_permission!(PermissionType::ManagePermissions, handler.permissions.permissions_list(ctx, interaction).await),
-        "permissions set" => ensure_permission!(PermissionType::ManagePermissions, handler.permissions.permissions_set(ctx, interaction, args).await),
-        "permissions add" => ensure_permission!(PermissionType::ManagePermissions, handler.permissions.permissions_add(ctx, interaction, args).await),
-        "permissions remove" => ensure_permission!(PermissionType::ManagePermissions, handler.permissions.permissions_remove(ctx, interaction, args).await),
-        "previews add" => ensure_permission!(PermissionType::ManagePreviews, handler.previews.previews_add(ctx, interaction, args).await),
-        "previews remove" => ensure_permission!(PermissionType::ManagePreviews, handler.previews.previews_remove(ctx, interaction, args).await),
-        "previews list" => ensure_permission!(PermissionType::ManagePreviews, handler.previews.previews_list(ctx, interaction).await),
+        "permissions list" => ensure_permission!(ManagePermissions, handler.permissions.permissions_list(ctx, interaction).await),
+        "permissions set" => ensure_permission!(ManagePermissions, handler.permissions.permissions_set(ctx, interaction, args).await),
+        "permissions add" => ensure_permission!(ManagePermissions, handler.permissions.permissions_add(ctx, interaction, args).await),
+        "permissions remove" => ensure_permission!(ManagePermissions, handler.permissions.permissions_remove(ctx, interaction, args).await),
+        "previews add" => ensure_permission!(ManagePreviews, handler.previews.previews_add(ctx, interaction, args).await),
+        "previews remove" => ensure_permission!(ManagePreviews, handler.previews.previews_remove(ctx, interaction, args).await),
+        "previews list" => ensure_permission!(ManagePreviews, handler.previews.previews_list(ctx, interaction).await),
+        "previews archive" => ensure_permission!(ManagePreviews, handler.previews.previews_archive(ctx, interaction, args).await),
         "previews view" => handler.previews.previews_view(ctx, interaction, args).await,
         _ => Ok(())
     }
@@ -90,7 +91,7 @@ pub async fn chat_input_router(handler: &Handler, ctx: &BotContext, interaction:
 
 pub async fn component_router(handler: &Handler, ctx: &BotContext, interaction: &MessageComponentInteraction) -> Result<()> {
     macro ensure_permission {
-        ($permission: path, $command: expr) => {
+        ($permission: ident, $command: expr) => {
             ensure_permission_base!(ctx, handler.permissions, interaction, handler.application_id, $permission, $command)
         }
     }
@@ -108,9 +109,23 @@ pub async fn component_router(handler: &Handler, ctx: &BotContext, interaction: 
     use CustomIdType::*;
     match ty {
         Debug => ensure_owner!(crate::utils::debug_component(ctx, interaction).await),
-        ListPermissions => ensure_permission!(PermissionType::ManagePermissions, handler.permissions.permissions_list_component(ctx, interaction).await),
+        ListPermissions => ensure_permission!(ManagePermissions, handler.permissions.permissions_list_component(ctx, interaction).await),
     }
 }
 
-pub async fn user_router(_handler: &Handler, _ctx: &BotContext, _command: &ApplicationCommandInteraction) -> Result<()> { Ok(()) }
-pub async fn message_router(_handler: &Handler, _ctx: &BotContext, _command: &ApplicationCommandInteraction) -> Result<()> { Ok(()) }
+pub async fn message_router(handler: &Handler, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
+    macro ensure_permission {
+        ($permission: ident, $command: expr) => {
+            ensure_permission_base!(ctx, handler.permissions, interaction, handler.application_id, $permission, $command)
+        }
+    }
+
+    let message = interaction.data.resolved.messages.iter().next().ok_or_else(|| BotError::Internal(13))?.1;
+
+    match interaction.data.name.as_str() {
+        "Archive" => ensure_permission!(CreateArchive, handler.previews.previews_archive_context(ctx, interaction, message).await),
+        _ => Ok(())
+    }
+}
+
+pub async fn user_router(_handler: &Handler, _ctx: &BotContext, _interaction: &ApplicationCommandInteraction) -> Result<()> { Ok(()) }

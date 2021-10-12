@@ -11,7 +11,7 @@ use crate::modules::PermissionType;
 
 pub enum BotError {
     Generic(String),
-    Internal(u64), // used: 0-12
+    Internal(u64), // used: 0-13
     GuildOnly,
     Permissions(PermissionType),
     CacheMissing,

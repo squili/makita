@@ -83,10 +83,6 @@ impl EventHandler for Handler {
         let b_ctx = BotContext::build(ctx, self.pool.clone());
         match interaction {
             Interaction::ApplicationCommand(command) => {
-                handler_log!(
-                    "Command Deferral",
-                    command.defer(&b_ctx).await
-                );
                 match match command.data.kind {
                     ApplicationCommandType::ChatInput => router::chat_input_router(self, &b_ctx, &command).await,
                     ApplicationCommandType::User => router::user_router(self, &b_ctx, &command).await,
@@ -106,10 +102,6 @@ impl EventHandler for Handler {
                 if !component.data.custom_id.starts_with("MAK;") {
                     return
                 }
-                handler_log!(
-                    "Component Deferral",
-                    component.defer(&b_ctx).await
-                );
                 match router::component_router(self, &b_ctx, &component).await {
                     Ok(_) => {}
                     Err(err) =>
