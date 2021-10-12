@@ -1,4 +1,5 @@
-# Makita
+# Makita [![Deploy](https://github.com/squili/makita/actions/workflows/deploy.yml/badge.svg)](https://github.com/squili/makita/actions/workflows/deploy.yml)
+
 TODO: write description
 
 ## Principles
