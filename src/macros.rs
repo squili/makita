@@ -66,7 +66,14 @@ pub macro debug {
 }
 
 pub macro invite_url {
-($id: expr) => {
+    ($id: expr) => {
         format!("https://discord.com/oauth2/authorize?client_id={}&permissions=8&scope=applications.commands+bot", $id)
+    }
+}
+
+/// turns something into a string - useful shorthand
+pub macro s {
+    ($string: expr) => {
+        $string.to_string()
     }
 }

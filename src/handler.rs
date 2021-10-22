@@ -12,12 +12,12 @@ use serenity::model::gateway::{Activity, Ready};
 use sqlx::{Postgres, Pool};
 use serenity::model::guild::Guild;
 use serenity::model::id::{ApplicationId, UserId};
-use serenity::model::interactions::Interaction;
+use serenity::model::interactions::{Interaction, InteractionApplicationCommandCallbackDataFlags, InteractionResponseType};
 use serenity::model::interactions::application_command::ApplicationCommandType;
 use crate::router;
 use serenity::utils::Color;
 use crate::error::BotError;
-use crate::modules::{PermissionsModule, PreviewsModule, UpdatesModule};
+use crate::modules::{AuthModule, PermissionsModule, PreviewsModule, UpdatesModule};
 use crate::utils::BotContext;
 
 pub struct Handler {
@@ -27,22 +27,23 @@ pub struct Handler {
     pub updates: Arc<UpdatesModule>,
     pub permissions: Arc<PermissionsModule>,
     pub previews: Arc<PreviewsModule>,
+    pub auth: Arc<AuthModule>,
 }
 
-macro_rules! handler_log {
+pub macro handler_log {
     ($name: expr, $thing: expr) => {
         if let Err(e) = $thing {
             error!("Error in {}: {:?}", $name, e)
         }
-    };
+    }
 }
 
-macro_rules! pass_event {
+macro pass_event {
     ($name: expr, $instance: expr, $func: path, $($passthrough: expr),*) => {
         async {
             handler_log!($name, $func(&$instance, $($passthrough),*).await);
         }
-    };
+    }
 }
 
 #[async_trait]
@@ -107,9 +108,12 @@ impl EventHandler for Handler {
                     Err(err) =>
                         handler_log!(
                             "Message Component Error Response",
-                            component.edit_original_interaction_response(&b_ctx, |r|
+                            component.create_followup_message(&b_ctx, |r|
                                 r.content("").create_embed(|e|
-                                    e.description(format!("{}{}", if err.is::<BotError>() {""} else {"Internal error: "}, err)).color(Color::RED))).await)
+                                    e.description(format!("{}{}", if err.is::<BotError>() {""} else {"Internal error: "}, err)).color(Color::RED)
+                                )
+                            ).await
+                        )
                 }
             },
             _ => {},

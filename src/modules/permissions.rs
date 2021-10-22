@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::{broadcast, RwLock};
 use sqlx::{PgPool, Row};
-use crate::utils::{SqlId, FollowupBuilder, BotContext};
+use crate::utils::{SqlId, FollowupBuilder, BotContext, defer_command, defer_component};
 use crate::macros::impl_cache_functions;
 use crate::error::BotError;
 use serenity::model::interactions::application_command::ApplicationCommandInteraction;
@@ -21,6 +21,7 @@ use serenity::model::interactions::message_component::MessageComponentInteractio
 use serenity::model::misc::Mentionable;
 use crate::decode::SlashMap;
 use futures::FutureExt;
+use serenity::model::guild::Role;
 use crate::tasks::TaskMessage;
 
 macro_rules! impl_permission_type {
@@ -154,11 +155,11 @@ impl PermissionsModule {
             .await?;
 
         for row in rows {
-            instance.guild_write(&row.get::<SqlId<GuildId>, &str>("guild_id").0, |entry| {
-                let data = unsafe { entry.get_mut(&row.get::<PermissionType, &str>("type")) };
-                data.discord = DiscordPermissions { bits: row.get::<SqlId<u64>, &str>("overwrites").0 };
-                data.roles = row.get::<Vec<i64>, &str>("roles").iter().map(|s| RoleId(*s as u64)).collect::<Vec<RoleId>>();
-                data.users = row.get::<Vec<i64>, &str>("users").iter().map(|s| UserId(*s as u64)).collect::<Vec<UserId>>();
+            instance.guild_write(&row.get::<SqlId<GuildId>, _>("guild_id").0, |entry| {
+                let data = unsafe { entry.get_mut(&row.get::<PermissionType, _>("type")) };
+                data.discord = DiscordPermissions { bits: row.get::<SqlId<u64>, _>("overwrites").0 };
+                data.roles = row.get::<Vec<i64>, _>("roles").iter().map(|s| RoleId(*s as u64)).collect::<Vec<RoleId>>();
+                data.users = row.get::<Vec<i64>, _>("users").iter().map(|s| UserId(*s as u64)).collect::<Vec<UserId>>();
             }).await;
         }
 
@@ -178,42 +179,37 @@ impl PermissionsModule {
         Ok(())
     }
 
-    fn entry_perms_check(ty: &PermissionType, entry: &PermissionEntry, highest: &DiscordPermissions, user: &UserId, roles: &[RoleId]) -> bool {
+    fn entry_perms_check(ty: &PermissionType, entry: &PermissionEntry, highest: &DiscordPermissions, user: &UserId, roles: &[Role]) -> bool {
         let data = entry.get(ty);
         (data.discord.bits > 0 && highest.contains(data.discord)) || data.users.contains(user)
-            || roles.iter().any(|item| data.roles.contains(item))
+            || roles.iter().any(|item| data.roles.contains(&item.id))
     }
 
     #[allow(clippy::needless_lifetimes)] // lifetimes not actually needless
-    pub async fn check<'a>(&self, ctx: &BotContext, ty: &'a PermissionType, guild: &GuildId, user: &UserId, roles: &[RoleId]) -> Result<Option<&'a PermissionType>> {
+    pub async fn check<'a>(&self, ty: &'a PermissionType, guild: &GuildId, owner: &UserId, user: &UserId, roles: &[Role]) -> Option<&'a PermissionType> {
         if self.sudo_enabled.load(Ordering::Relaxed) && user == &self.owner_id {
-              return Ok(None)
+              return None
         }
 
-        let guild_data = ctx.cache.guild(*guild).await.ok_or(BotError::CacheMissing)?;
-        if &guild_data.owner_id == user {
-            return Ok(None)
+        if owner == user {
+            return None
         }
         let mut highest_permissions = DiscordPermissions::empty();
         for role in roles {
-            let role = guild_data.roles.get(role).ok_or(BotError::CacheMissing)?;
             highest_permissions.insert(role.permissions);
-        }
-        if highest_permissions.administrator() {
-            return Ok(None);
         }
         self.guild_read(guild, |entry| {
             if Self::entry_perms_check(&PermissionType::Administrator, entry, &highest_permissions, user, roles) ||
                 Self::entry_perms_check(ty, entry, &highest_permissions, user, roles) {
-                Ok(None)
+                None
             } else {
-                Ok(Some(ty))
+                Some(ty)
             }
         }).await
     }
 
     pub async fn makita_sudo(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
-        interaction.defer(&ctx).await?;
+        defer_command(&ctx, &interaction).await?;
         let sudo_enabled = self.sudo_enabled.load(Ordering::Relaxed);
         self.sudo_enabled.store(!sudo_enabled, Ordering::Relaxed);
 
@@ -224,7 +220,7 @@ impl PermissionsModule {
     }
 
     pub async fn permissions_list(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
-        interaction.defer(&ctx).await?;
+        defer_command(&ctx, &interaction).await?;
         interaction.create_followup_message(&ctx.http, |a|
             a.components(|b|
                 b.create_action_row(|c|
@@ -244,7 +240,7 @@ impl PermissionsModule {
     }
 
     pub async fn permissions_list_component(&self, ctx: &BotContext, interaction: &MessageComponentInteraction) -> Result<()> {
-        interaction.defer(&ctx).await?;
+        defer_component(&ctx, &interaction).await?;
         let ty = PermissionType::from_string(
             interaction.data.values.get(0).ok_or_else(|| BotError::InvalidRequest("Missing component values".to_string()))?)?;
 
@@ -255,7 +251,7 @@ impl PermissionsModule {
              data.users.iter().map(|x| x.mention().to_string()).collect::<Vec<String>>().join("\n"))
         }).await;
 
-        interaction.create_followup_message(&ctx.http, |a|
+        interaction.edit_original_interaction_response(&ctx.http, |a|
             a.create_embed(|b| {
                 if !roles.is_empty() {
                     b.field("Roles", roles, false);
@@ -283,7 +279,7 @@ impl PermissionsModule {
     }
 
     pub async fn permissions_set(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
-        interaction.defer(&ctx).await?;
+        defer_command(&ctx, &interaction).await?;
         let ty = PermissionType::from_string(&args.get_string("permission")?)?;
         let permissions = DiscordPermissions::from_bits(args.get_integer("bits")? as u64)
             .ok_or_else(|| BotError::InvalidRequest("Invalid permissions bits".to_string()))?;
@@ -301,7 +297,7 @@ impl PermissionsModule {
     }
 
     pub async fn permissions_add(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
-        interaction.defer(&ctx).await?;
+        defer_command(&ctx, &interaction).await?;
         let ty = PermissionType::from_string(&args.get_string("permission")?)?;
         let user = args.get_user("user").map(|s| s.get_user().id).ok();
         let role_object = args.get_role("role").ok();
@@ -336,7 +332,7 @@ impl PermissionsModule {
     }
 
     pub async fn permissions_remove(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
-        interaction.defer(&ctx).await?;
+        defer_command(&ctx, &interaction).await?;
         let ty = PermissionType::from_string(&args.get_string("permission")?)?;
         let user = args.get_user("user").map(|s| s.get_user().id).ok();
         let role = args.get_role("role").map(|s| s.id).ok();

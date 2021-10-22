@@ -5,7 +5,7 @@
 
 use std::borrow::Cow;
 use anyhow::{Error, Result};
-use serenity::model::channel::{Message, GuildChannel, Attachment, MessageType, MessageFlags, PartialChannel};
+use serenity::model::channel::{Message, GuildChannel, Attachment, MessageType, MessageFlags, PartialChannel, Channel};
 use serenity::model::id::{GuildId, ChannelId, MessageId, UserId};
 use sqlx::{PgPool, Row};
 use regex::Regex;
@@ -16,7 +16,7 @@ use std::sync::Arc;
 use serenity::builder::CreateEmbed;
 use serenity::http::AttachmentType;
 use serenity::model::guild::{Guild, Member};
-use crate::utils::{remove_indexes, SqlId, default_arg, FollowupBuilder, BotContext, Link};
+use crate::utils::{remove_indexes, SqlId, default_arg, FollowupBuilder, BotContext, Link, defer_command};
 use sqlx::postgres::PgRow;
 use crate::decode::SlashMap;
 use serenity::model::interactions::application_command::ApplicationCommandInteraction;
@@ -24,7 +24,7 @@ use serenity::model::interactions::InteractionApplicationCommandCallbackDataFlag
 use serenity::model::misc::Mentionable;
 use serenity::model::prelude::InteractionResponseType;
 use crate::error::BotError;
-use crate::macros::{impl_cache_functions, debug};
+use crate::macros::{impl_cache_functions, debug, s};
 use crate::tasks::TaskMessage;
 
 #[derive(Default)]
@@ -54,7 +54,7 @@ impl PreviewsModule {
         // load auto channels from db
         let rows = sqlx::query("select guild_id, channel_id from PreviewChannels")
             .map(|row: PgRow| {
-                (row.get::<SqlId<GuildId>, &str>("guild_id").0, row.get::<SqlId<ChannelId>, &str>("channel_id").0)
+                (row.get::<SqlId<GuildId>, _>("guild_id").0, row.get::<SqlId<ChannelId>, _>("channel_id").0)
             })
             .fetch_all(pool)
             .await?;
@@ -68,7 +68,7 @@ impl PreviewsModule {
         // load archive channels from db
         let rows = sqlx::query("select guild_id, channel_id from ArchiveChannel")
             .map(|row: PgRow| {
-                (row.get::<SqlId<GuildId>, &str>("guild_id").0, row.get::<SqlId<ChannelId>, &str>("channel_id").0)
+                (row.get::<SqlId<GuildId>, _>("guild_id").0, row.get::<SqlId<ChannelId>, _>("channel_id").0)
             })
             .fetch_all(pool)
             .await?;
@@ -132,7 +132,7 @@ impl PreviewsModule {
 
         // populate author
         if filter_kind!(Regular, PinsAdd, NitroBoost, NitroTier1, NitroTier2, NitroTier3, MemberJoin,
-            ChannelFollowAdd, ThreadCreated, InlineReply, ApplicationCommand, ContextMenuCommand) {
+            ChannelFollowAdd, ThreadCreated, InlineReply, ChatInputCommand, ContextMenuCommand) {
             embed.author(|author|
                 author
                     .name(match message.author.discriminator {
@@ -149,7 +149,7 @@ impl PreviewsModule {
         }
 
         // standard-type messages
-        if filter_kind!(Regular, InlineReply, ApplicationCommand) {
+        if filter_kind!(Regular, InlineReply, ChatInputCommand) {
             embed
                 .description(match &message.referenced_message {
                     Some(referenced) => format!("{}\n[Reply to]({})", message.content, referenced.link_ensured(&ctx).await),
@@ -196,7 +196,7 @@ impl PreviewsModule {
             MessageType::ChannelFollowAdd => {
                 let reference = message.message_reference.as_ref().unwrap();
                 embed.description(format!("{} started following {}{} in {}{}", message.author.mention(),
-                    match ctx.cache.guild(reference.guild_id.unwrap()).await {
+                    match ctx.cache.guild(reference.guild_id.unwrap()) {
                         Some(guild) => format!("[{}]{} ",
                             guild.name, reference.link()),
                         None => "".to_string()
@@ -206,10 +206,13 @@ impl PreviewsModule {
             MessageType::ThreadCreated => {
                 let reference = message.message_reference.as_ref().unwrap();
                 embed.description(format!("{} created the thread {} in {}{}", message.author.mention(),
-                    match message.guild(&ctx).await.unwrap().threads.iter()
-                        .find(|thread| thread.id == reference.channel_id) {
-                        Some(channel) => channel.mention().to_string(),
-                        None => format!("#{}", message.content),
+                    match message.guild(&ctx) {
+                        Some(g) => match g.threads.iter()
+                            .find(|thread| thread.id == reference.channel_id) {
+                            Some(channel) => channel.mention().to_string(),
+                            None => format!("#{}", message.content),
+                        },
+                        None => format!("#{}", message.content)
                     }, maybe_link_foreign, message.channel_id.mention()));
             }
             _ => {}
@@ -224,7 +227,7 @@ impl PreviewsModule {
             embed.field("Crosspost", "Source deleted", true);
         } else if flags.contains(MessageFlags::IS_CROSSPOST) {
             let reference = message.message_reference.as_ref().unwrap();
-            match ctx.cache.guild_field(reference.guild_id.unwrap(), |f| f.name.clone()).await {
+            match ctx.cache.guild_field(reference.guild_id.unwrap(), |f| f.name.clone()) {
                 Some(guild) => {
                     embed.field("Crosspost", format!("From [{}]({})", guild, reference.link()), true);
                 }
@@ -247,23 +250,26 @@ impl PreviewsModule {
 
     async fn preview(&self, ctx: &BotContext, from_user: &UserId, from_guild: &Option<GuildId>,
                      guild: GuildId, channel: ChannelId, message: MessageId) -> Result<(Vec<CreateEmbed>, Vec<Attachment>)> {
-        match ctx.cache.guild(&guild).await { // get guild
+        match ctx.cache.guild(&guild) { // get guild
             None => Err(Error::new(BotError::NotFound("Server".to_string()))),
             Some(guild) => {
                 match guild.member(&ctx, *from_user).await { // get member
-                    Err(_) => Err(Error::new(BotError::Generic("You must be in a server to preview messages from it".to_string()))),
+                    Err(_) => Err(Error::new(BotError::Generic(s!("You must be in a server to preview messages from it")))),
                     Ok(member) => {
                         // get permissions
-                        if !member.roles(&ctx).await.ok_or(BotError::CacheMissing)?
+                        if !member.roles(&ctx).ok_or(BotError::CacheMissing)?
                             .iter().any(|role| role.permissions.administrator())
                             && !guild.user_permissions_in(match guild.channels.get(&channel) { // get channel
-                                Some(s) => s,
+                                Some(s) => match s {
+                                    Channel::Guild(g) => g,
+                                    _ => return Err(Error::new(BotError::NotFound(s!("Channel"))))
+                                },
                                 None => match guild.threads.iter().find(|c| c.id == channel) {
                                     Some(s) => s,
                                     None => return Err(Error::new(BotError::CacheMissing))
                                 }
                             }, &member)?.read_messages() {
-                            return Err(Error::new(BotError::Generic("You do not have permission to view this message".to_string())));
+                            return Err(Error::new(BotError::Generic(s!("You do not have permission to view this message"))));
                         }
                         // get message
                         let mut message = channel.message(&ctx, &message).await
@@ -280,7 +286,6 @@ impl PreviewsModule {
                         for embed in message.embeds {
                             // copy embed data
                             let mut builder = CreateEmbed::default();
-                            builder.color(embed.colour);
                             if let Some(title) = &embed.title { builder.title(title); }
                             match embed.description {
                                 Some(description) => builder.description(description),
@@ -290,6 +295,7 @@ impl PreviewsModule {
                             if let Some(timestamp) = &embed.timestamp { builder.timestamp(timestamp.clone()); }
                             if let Some(image) = embed.image { builder.image(image.url); };
                             if let Some(thumbnail) = embed.thumbnail { builder.thumbnail(thumbnail.url); };
+                            if let Some(color) = embed.colour { builder.color(color); };
                             if let Some(footer) = embed.footer {
                                 builder.footer(|builder| {
                                     builder.text(footer.text);
@@ -404,7 +410,7 @@ impl PreviewsModule {
     }
 
     pub async fn previews_add(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
-        interaction.defer(&ctx).await?;
+        defer_command(&ctx, &interaction).await?;
         let target = args.get_channel("target")?;
         let guild_id = interaction.guild_id.ok_or(BotError::GuildOnly)?;
 
@@ -433,7 +439,7 @@ impl PreviewsModule {
     }
 
     pub async fn previews_remove(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
-        interaction.defer(&ctx).await?;
+        defer_command(&ctx, &interaction).await?;
         let target = args.get_channel("target")?;
         let guild_id = interaction.guild_id.ok_or(BotError::GuildOnly)?;
 
@@ -463,7 +469,7 @@ impl PreviewsModule {
     }
 
     pub async fn previews_list(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
-        interaction.defer(&ctx).await?;
+        defer_command(&ctx, &interaction).await?;
         let mut items = vec!["**Channels**".to_string()];
 
         self.read_cache(&interaction.guild_id.ok_or(BotError::GuildOnly)?, |data| {
@@ -486,7 +492,7 @@ impl PreviewsModule {
     }
 
     pub async fn previews_view(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
-        interaction.defer(&ctx).await?;
+        defer_command(&ctx, &interaction).await?;
         let target = args.get_string("target")?;
 
         let captures = self.link_regex.captures(&target).ok_or_else(|| BotError::Generic("Malformed link".to_string()))?;
@@ -516,7 +522,7 @@ impl PreviewsModule {
     }
 
     pub async fn previews_archive(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
-        interaction.defer(&ctx).await?;
+        defer_command(&ctx, &interaction).await?;
         let guild_id = interaction.guild_id.unwrap();
         match args.get_channel("target").ok() {
             // set

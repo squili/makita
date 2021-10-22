@@ -4,7 +4,9 @@
 // If not, see <https://www.gnu.org/licenses/#AGPL>
 
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 use anyhow::Result;
+use chrono::NaiveDateTime;
 use serenity::cache::Cache;
 use serenity::CacheAndHttp;
 use serenity::client::Context;
@@ -263,5 +265,20 @@ pub async fn debug_component(ctx: &BotContext, interaction: &MessageComponentInt
     interaction.create_followup_message(&ctx, |m| m.content("2")).await?;
     interaction.create_followup_message(&ctx, |m| m.content("3")).await?;
 
+    Ok(())
+}
+
+pub fn naive_now() -> NaiveDateTime {
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+    NaiveDateTime::from_timestamp(now.as_secs() as i64, now.subsec_nanos() as u32)
+}
+
+pub async fn defer_command<T: AsRef<Http>>(http: &T, interaction: &ApplicationCommandInteraction) -> Result<()> {
+    interaction.create_interaction_response(http.as_ref(), |r| r.kind(InteractionResponseType::DeferredChannelMessageWithSource)).await?;
+    Ok(())
+}
+
+pub async fn defer_component<T: AsRef<Http>>(http: &T, interaction: &MessageComponentInteraction) -> Result<()> {
+    interaction.create_interaction_response(http.as_ref(), |r| r.kind(InteractionResponseType::DeferredUpdateMessage)).await?;
     Ok(())
 }

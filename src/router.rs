@@ -4,7 +4,8 @@
 // If not, see <https://www.gnu.org/licenses/#AGPL>
 
 use anyhow::{Result, Error};
-use crate::handler::Handler;
+use serenity::model::guild::Role;
+use crate::handler::{Handler, handler_log};
 use serenity::model::interactions::application_command::ApplicationCommandInteraction;
 use crate::decode;
 use crate::error::BotError;
@@ -13,6 +14,8 @@ use crate::custom_ids::{parse_custom_id, CustomIdType};
 use crate::modules::PermissionType;
 use crate::utils::BotContext;
 use crate::macros::debug;
+use serenity::model::interactions::{Interaction, InteractionApplicationCommandCallbackDataFlags, InteractionResponseType};
+use serenity::utils::Color;
 
 macro ensure_guild {
     ($interaction: expr, $command: expr) => {
@@ -27,16 +30,34 @@ macro ensure_permission_base {
     ($ctx: expr, $cache: expr, $interaction: expr, $application_id: expr, $permission: ident, $command: expr) => {
         ensure_guild!(
             $interaction,
-            if let Some(missing) = $cache.check(
-                &$ctx,
-                &PermissionType::$permission,
-                &$interaction.guild_id.unwrap(),
-                &$interaction.user.id,
-                &$interaction.member.as_ref().ok_or(BotError::CacheMissing)?.roles).await?
             {
-                Err(Error::new(BotError::Permissions(*missing)))
-            } else {
-                $command
+                let guild_id = $interaction.guild_id.unwrap();
+                let roles = &$interaction.member.as_ref().ok_or(BotError::CacheMissing)?.roles;
+                let mut upgraded_roles = Vec::new();
+                let owner = $ctx.cache.guild_field(&guild_id, |g| {
+                    for role in roles {
+                        match g.roles.get(&role) {
+                            Some(data) => upgraded_roles.push(data.clone()),
+                            None => {}
+                        }
+                    }
+                    g.owner_id
+                }).ok_or(BotError::CacheMissing)?;
+                if let Some(missing) = $cache.check(
+                    &PermissionType::$permission,
+                    &guild_id,
+                    &owner,
+                    &$interaction.user.id,
+                    &upgraded_roles).await
+                {
+                    $interaction.create_interaction_response($ctx, |r|
+                        r.kind(InteractionResponseType::ChannelMessageWithSource).interaction_response_data(|d|
+                            d.flags(InteractionApplicationCommandCallbackDataFlags::EPHEMERAL).create_embed(|e|
+                                e.description(format!("Missing permission `{}`", missing.as_display())).color(Color::RED)))).await?;
+                    Ok(())
+                } else {
+                    $command
+                }
             }
         )
     }

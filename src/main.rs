@@ -4,6 +4,8 @@
 // If not, see <https://www.gnu.org/licenses/#AGPL>
 
 #![feature(decl_macro)]
+#![feature(try_trait_v2)]
+#![feature(once_cell)]
 
 mod config;
 mod handler;
@@ -18,8 +20,9 @@ mod error;
 mod custom_ids;
 mod cli;
 mod modules;
+mod api;
 
-use std::env;
+use std::{env, fs};
 use crate::config::Config;
 use crate::handler::Handler;
 use anyhow::{Error, Result};
@@ -42,11 +45,14 @@ use serenity::http::request::RequestBuilder;
 use serenity::http::routing::RouteInfo;
 use crate::cli::{Opts, Subcommand};
 use clap::Clap;
+use jsonwebtokens::{Algorithm, AlgorithmID};
 use serenity::model::id::ApplicationId;
 use tokio::sync::{broadcast, mpsc};
+use crate::api::utils::ApiContext;
 use crate::modules::updates;
 use crate::modules::updates::RESTARTING;
 use crate::utils::BotContext;
+use crate::macros::s;
 
 fn main() -> Result<()> {
     let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -100,24 +106,35 @@ async fn start() -> Result<()> {
 
     info!("initializing handler");
     let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
-    let application_id = Http::new_with_token(&config.token).get_current_application_info().await?.id.0;
+
+    // define modules outside of handler so we can use it in the api
+    let updates_module = Arc::new(modules::UpdatesModule::new(shutdown_tx.clone()));
+    let permissions_module = Arc::new(modules::PermissionsModule::new(config.owner_id, pool.clone()));
+    let previews_module = Arc::new(modules::PreviewsModule::new()?);
+    let auth_module = Arc::new(modules::AuthModule::new(pool.clone(),
+        Algorithm::new_ecdsa_pem_signer(AlgorithmID::ES256, &fs::read("public.pem")?)?,
+        Algorithm::new_ecdsa_pem_verifier(AlgorithmID::ES256, &fs::read("private.pem")?)?,
+    ));
+
     let handler = Handler {
         pool: pool.clone(),
-        application_id: ApplicationId(application_id),
+        application_id: config.client_id.clone(),
         owner_id: config.owner_id,
-        updates: Arc::new(modules::UpdatesModule::new(shutdown_tx.clone())),
-        permissions: Arc::new(modules::PermissionsModule::new(config.owner_id, pool.clone())),
-        previews: Arc::new(modules::PreviewsModule::new()?),
+        updates: updates_module.clone(),
+        permissions: permissions_module.clone(),
+        previews: previews_module.clone(),
+        auth: auth_module.clone()
     };
 
     info!("initializing modules");
     let (task_tx, _) = broadcast::channel(0x400);
-    modules::PermissionsModule::initialize(handler.permissions.clone(), task_tx.subscribe()).await?;
-    modules::PreviewsModule::initialize(handler.previews.clone(), task_tx.subscribe(), &pool).await?;
+    modules::PermissionsModule::initialize(permissions_module.clone(), task_tx.subscribe()).await?;
+    modules::PreviewsModule::initialize(previews_module.clone(), task_tx.subscribe(), &pool).await?;
+    auth_module.initialize().await?;
 
     info!("initializing client");
     let mut client = Client::builder(&config.token)
-        .application_id(application_id)
+        .application_id(config.client_id.0)
         .event_handler(handler)
         .intents(
             GatewayIntents::GUILDS | GatewayIntents::GUILD_MESSAGES | GatewayIntents::GUILD_MEMBERS,
@@ -163,7 +180,6 @@ async fn start() -> Result<()> {
         background_task("Guild Cleanup", |ctx| tasks::guild_cleanup(ctx.clone()), task_ctx_clone, Duration::days(1)).await;
     });
 
-    info!("starting client");
     let shutdown_tx_clone = shutdown_tx.clone();
     tokio::spawn(async move {
         CtrlC::new().expect("Error registering CtrlC handler").await;
@@ -171,6 +187,20 @@ async fn start() -> Result<()> {
         shutdown_tx_clone.send(()).await.expect("Error sending shutdown signal");
     });
 
+    // temporarily disable api server
+    // info!("spawning api server");
+    // api::start(Arc::new(ApiContext {
+    //     http: client.cache_and_http.http.clone(),
+    //     cache: client.cache_and_http.cache.clone(),
+    //     pool,
+    //     config,
+    //     updates: updates_module,
+    //     permissions: permissions_module,
+    //     previews: previews_module,
+    //     auth: auth_module,
+    // })).await?;
+
+    info!("starting client");
     let shard_manager = client.shard_manager.clone();
     tokio::spawn(async move {
         if let Err(err) = client.start().await {

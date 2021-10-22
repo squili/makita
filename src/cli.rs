@@ -10,13 +10,13 @@ use crate::config::Config;
 use std::fs;
 use std::net::SocketAddr;
 use std::str::FromStr;
+use rcgen::{PKCS_ECDSA_P256_SHA256, PKCS_ECDSA_P384_SHA384, PKCS_ED25519};
 use ring::rand::SystemRandom;
-use ring::signature::Ed25519KeyPair;
 use ron::extensions::Extensions;
 use ron::ser::PrettyConfig;
 use serenity::http::Http;
-use serenity::model::id::{GuildId, UserId};
-use crate::macros::invite_url;
+use serenity::model::id::{ApplicationId, GuildId, UserId};
+use crate::macros::{invite_url, s};
 
 #[derive(Clap)]
 pub struct Opts {
@@ -42,13 +42,29 @@ pub fn init() -> Result<()> {
         .with_prompt("Bot token")
         .interact_text()?;
 
+    let client_id = ApplicationId(u64::from_str(&Input::<String>::new()
+        .with_prompt("Client ID")
+        .interact_text()?)?);
+
+    let client_secret = Input::new()
+        .with_prompt("Client secret")
+        .interact_text()?;
+
     let database_url = Input::new()
         .with_prompt("Database url")
         .interact_text()?;
 
-    let api_addr = SocketAddr::from_str(&Input::<String>::new()
-        .with_prompt("Api address")
+    let host_addr = SocketAddr::from_str(&Input::<String>::new()
+        .with_prompt("Host address")
         .interact_text()?)?;
+
+    let api_url = Input::<String>::new()
+        .with_prompt("Api url")
+        .interact_text()?;
+
+    let frontend_url = Input::<String>::new()
+        .with_prompt("Frontend url")
+        .interact_text()?;
 
     let owner_id = u64::from_str(&Input::<String>::new()
         .with_prompt("Owner id")
@@ -60,8 +76,12 @@ pub fn init() -> Result<()> {
 
     let config = Config {
         token,
+        client_id,
+        client_secret,
         database_url,
-        api_addr: api_addr.to_string(),
+        host_addr,
+        api_url,
+        frontend_url,
         owner_id: UserId(owner_id),
         manager_guild: GuildId(manager_guild),
         commands_guild: None,
@@ -70,11 +90,11 @@ pub fn init() -> Result<()> {
     fs::write("config.ron", ron::ser::to_string_pretty(&config,
         PrettyConfig::new().with_extensions(Extensions::UNWRAP_NEWTYPES | Extensions::IMPLICIT_SOME))?)?;
 
-    // this keypair is not currently being used, but it will be used in the future for signing api tokens
     println!("Generating keypair");
 
-    let document = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new())?;
-    fs::write("key.der", document.as_ref())?;
+    let keypair = rcgen::KeyPair::generate(&PKCS_ECDSA_P256_SHA256)?;
+    fs::write("public.pem", keypair.serialize_pem())?;
+    fs::write("private.pem", keypair.public_key_pem())?;
 
     Ok(())
 }

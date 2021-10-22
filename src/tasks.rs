@@ -94,7 +94,7 @@ where
 pub async fn guild_cleanup(ctx: TaskContext) -> Result<()> {
     debug!("starting guild cleanup");
 
-    let guilds = ctx.cache.guilds().await;
+    let guilds = ctx.cache.guilds();
 
     let iter = sqlx::query("select id from Guilds where expiration is null")
         .map(|row: PgRow| row.get::<i64, &str>("id") as u64)
