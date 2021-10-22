@@ -46,7 +46,7 @@ use serenity::http::routing::RouteInfo;
 use crate::cli::{Opts, Subcommand};
 use clap::Clap;
 use jsonwebtokens::{Algorithm, AlgorithmID};
-use serenity::model::id::ApplicationId;
+use serenity::model::id::{ApplicationId, UserId};
 use tokio::sync::{broadcast, mpsc};
 use crate::api::utils::ApiContext;
 use crate::modules::updates;
@@ -109,7 +109,7 @@ async fn start() -> Result<()> {
 
     // define modules outside of handler so we can use it in the api
     let updates_module = Arc::new(modules::UpdatesModule::new(shutdown_tx.clone()));
-    let permissions_module = Arc::new(modules::PermissionsModule::new(config.owner_id, pool.clone()));
+    let permissions_module = Arc::new(modules::PermissionsModule::new(UserId(config.owner_id), pool.clone()));
     let previews_module = Arc::new(modules::PreviewsModule::new()?);
     let auth_module = Arc::new(modules::AuthModule::new(pool.clone(),
         Algorithm::new_ecdsa_pem_signer(AlgorithmID::ES256, &fs::read("public.pem")?)?,
@@ -118,8 +118,8 @@ async fn start() -> Result<()> {
 
     let handler = Handler {
         pool: pool.clone(),
-        application_id: config.client_id.clone(),
-        owner_id: config.owner_id,
+        application_id: ApplicationId(config.client_id),
+        owner_id: UserId(config.owner_id),
         updates: updates_module.clone(),
         permissions: permissions_module.clone(),
         previews: previews_module.clone(),
@@ -134,7 +134,7 @@ async fn start() -> Result<()> {
 
     info!("initializing client");
     let mut client = Client::builder(&config.token)
-        .application_id(config.client_id.0)
+        .application_id(config.client_id)
         .event_handler(handler)
         .intents(
             GatewayIntents::GUILDS | GatewayIntents::GUILD_MESSAGES | GatewayIntents::GUILD_MEMBERS,
@@ -147,7 +147,7 @@ async fn start() -> Result<()> {
 
     let mut req = RequestBuilder::new(RouteInfo::CreateGuildApplicationCommand {
         application_id: client.cache_and_http.http.application_id,
-        guild_id: config.manager_guild.0,
+        guild_id: config.manager_guild,
     });
     req.body(iter.next());
     let _: ApplicationCommand = client.cache_and_http.http.fire(req.build()).await?;

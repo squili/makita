@@ -42,9 +42,9 @@ pub fn init() -> Result<()> {
         .with_prompt("Bot token")
         .interact_text()?;
 
-    let client_id = ApplicationId(u64::from_str(&Input::<String>::new()
+    let client_id = u64::from_str(&Input::<String>::new()
         .with_prompt("Client ID")
-        .interact_text()?)?);
+        .interact_text()?)?;
 
     let client_secret = Input::new()
         .with_prompt("Client secret")
@@ -82,8 +82,8 @@ pub fn init() -> Result<()> {
         host_addr,
         api_url,
         frontend_url,
-        owner_id: UserId(owner_id),
-        manager_guild: GuildId(manager_guild),
+        owner_id,
+        manager_guild,
         commands_guild: None,
     };
 

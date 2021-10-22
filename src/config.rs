@@ -10,14 +10,14 @@ use serenity::model::id::{ApplicationId, GuildId, UserId};
 #[derive(Deserialize, Serialize)]
 pub struct Config {
     pub token: String,
-    pub client_id: ApplicationId,
+    pub client_id: u64,
     pub client_secret: String,
     pub database_url: String,
     pub host_addr: SocketAddr,
     pub api_url: String,
     pub frontend_url: String,
-    pub owner_id: UserId,
-    pub manager_guild: GuildId,
+    pub owner_id: u64,
+    pub manager_guild: u64,
     #[serde(default)]
     pub commands_guild: Option<GuildId>,
 }
