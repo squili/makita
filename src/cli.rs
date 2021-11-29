@@ -10,13 +10,11 @@ use crate::config::Config;
 use std::fs;
 use std::net::SocketAddr;
 use std::str::FromStr;
-use rcgen::{PKCS_ECDSA_P256_SHA256, PKCS_ECDSA_P384_SHA384, PKCS_ED25519};
-use ring::rand::SystemRandom;
+use rcgen::PKCS_ECDSA_P256_SHA256;
 use ron::extensions::Extensions;
 use ron::ser::PrettyConfig;
 use serenity::http::Http;
-use serenity::model::id::{ApplicationId, GuildId, UserId};
-use crate::macros::{invite_url, s};
+use crate::macros::invite_url;
 
 #[derive(Clap)]
 pub struct Opts {

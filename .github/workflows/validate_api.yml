@@ -1,0 +1,10 @@
+name: Validate OpenApi
+on: push
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone
+        uses: actions/checkout@v2
+      - name: Validate
+        run: npx @redocly/openapi-cli lint openapi.yml --skip-rule no-empty-servers --skip-rule info-description --skip-rule operation-4xx-response

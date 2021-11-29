@@ -8,7 +8,7 @@ name = "makita"
 description = "The cordless hose nozzle of Discord bots"
 repository = "https://github.com/squili/makita"
 version = "1.0.0"
-edition = "2018"
+edition = "2021"
 resolver = "2"
 
 [dependencies]
@@ -17,7 +17,7 @@ anyhow = "1"
 # we're using the next branch here. no, it's not because i just love their amazing new changes. no, it's not because
 # i can't stand not running on the bleeding edge. it's because an edge case being fixed could break other stuff
 # in an edge case. fml.
-serenity = { git = "https://github.com/serenity-rs/serenity.git", rev = "29dd43a", default-features = false, features = ["client", "http", "model", "unstable_discord_api", "cache", "rustls_backend", "gateway"] }
+serenity = { git = "https://github.com/serenity-rs/serenity.git", rev = "d1f944b", default-features = false, features = ["client", "http", "model", "unstable_discord_api", "cache", "rustls_backend", "gateway"] }
 #serenity = { version = "0.10.9", default-features = false, features = ["client", "http", "model", "unstable_discord_api", "cache", "rustls_backend", "gateway"] }
 #serenity-slash-decode = "0.1.2"
 log = "0.4"
@@ -29,7 +29,6 @@ sqlx = { version = "0.5", features = ["runtime-tokio-rustls", "postgres", "chron
 chrono = "0.4"
 regex = "1"
 futures = "0.3"
-paste = "1"
 clap = "3.0.0-beta.4"
 dialoguer = "0.8"
 ring = { version = "0.16", features = ["std"] }
@@ -38,13 +37,12 @@ octocrab = "0.12"
 semver = "1"
 async-ctrlc = "1"
 serde_json = "1"
-axum = "0.2"
+axum = "0.3"
 tower = "0.4"
-tower-http = "0.1"
+tower-http = { version = "0.1.2", features = ["cors"] }
 jsonwebtokens = "1"
 rcgen = { version = "0.8", features = ["pem"] }
 base64 = "0.13"
-axum-debug = "0.1"
 
 [build-dependencies]
 # needed for converting commands.json5

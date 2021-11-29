@@ -1,30 +1,23 @@
+// Copyright 2021 Squili
+// This program is distributed under the terms of the GNU Affero General Public License
+// You should have received a copy of the license along with this program
+// If not, see <https://www.gnu.org/licenses/#AGPL>
+
+use crate::prelude::*;
 use std::collections::HashMap;
-use std::lazy::Lazy;
+use std::lazy::SyncLazy;
 use std::str::FromStr;
-use std::sync::Arc;
-use std::task::{Context, Poll};
-use axum::body::{Body, Empty};
-use axum::extract::{Extension, FromRequest, Path, Query, RequestParts};
-use axum::http::{HeaderMap, Request, Response, StatusCode, Uri};
+use axum::extract::{Extension, Query};
+use axum::http::{HeaderMap, Uri};
 use axum::response::{IntoResponse, Redirect};
-use jsonwebtokens::{Algorithm, Verifier};
 use serde::{Serialize, Deserialize};
-use crate::api::utils::{ApiContext, ApiError, api_map};
-use serde_json::json;
+use crate::api::utils::{ApiError, api_map, serialize_response};
 use serenity::http::{GuildPagination, Http};
 use serenity::model::id::{GuildId, UserId};
-use crate::macros::s;
-use crate::modules::updates::GitMeta;
 use anyhow::Error as AnyhowError;
-use axum::Json;
-use axum_debug::debug_handler;
-use tower::{MakeService, Service};
-use crate::modules::{AuthModule, AuthQueryError, PermissionType, Session};
-use log::info;
-use serenity::async_trait;
-use serenity::model::guild::Guild;
+use crate::modules::{PermissionType, Session};
 
-const REQWEST_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
+static REQWEST_CLIENT: SyncLazy<reqwest::Client> = SyncLazy::new(|| {
     reqwest::Client::builder()
         .user_agent(match &crate::modules::updates::GIT_META {
             Some(meta) => format!("DiscordBot (https://github.com/{}, {})", meta.repo, meta.tag),
@@ -34,7 +27,6 @@ const REQWEST_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
         .expect("build oauth client")
 });
 
-#[debug_handler]
 pub async fn redirect(Extension(ctx): Extension<Arc<ApiContext>>) -> impl IntoResponse {
     let redirect_url = format!(
         "https://discord.com/api/oauth2/authorize?client_id={}&prompt=consent&redirect_uri={}/auth/callback&response_type=code&scope=identify%20guilds",
@@ -58,12 +50,11 @@ struct TokenResponse {
     access_token: Option<String>,
 }
 
-#[debug_handler]
 pub async fn callback(
     Extension(ctx): Extension<Arc<ApiContext>>,
-    Query(params): Query<HashMap<String, String>>
+    Query(params): Query<HashMap<String, String>>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let code = params.get("code").ok_or_else(|| ApiError::BadRequest("missing code parameter"))?;
+    let code = params.get("code").ok_or(ApiError::BadRequest("missing code parameter"))?;
 
     let resp: TokenResponse = REQWEST_CLIENT
         .post("https://discord.com/api/oauth2/token")
@@ -109,19 +100,19 @@ pub async fn callback(
 
     let token = ctx.auth.new_session(user, guilds).await.map_err(api_map!())?;
 
-    Ok(Redirect::temporary(Uri::from_str(&format!("{}/set_token?token={}", ctx.config.frontend_url, token)).unwrap()))
+    Ok(Redirect::temporary(Uri::from_str(&format!("{}/authenticate?token={}", ctx.config.frontend_url, token)).unwrap()))
 }
 
 pub async fn check(ctx: &Arc<ApiContext>, headers: &HeaderMap, guild_id: Option<&GuildId>, permission: Option<&PermissionType>) -> Result<Arc<Session>, ApiError> {
     let token = headers
         .get("authorization")
-        .ok_or_else(|| ApiError::BadRequest("Missing `authorization` header"))?
+        .ok_or(ApiError::BadRequest("Missing `authorization` header"))?
         .to_str()
         .map_err(|_| ApiError::BadRequest("Invalid character in `authorization` header"))?;
 
     Ok(match permission {
         None => ctx.auth.query(token, guild_id).await.map_err(|err| err.as_api_error())?,
-        Some(permission) => ctx.auth.query_permission(&ctx, token, guild_id.unwrap(), permission).await.map_err(|err| err.as_api_error())?,
+        Some(permission) => ctx.auth.query_permission(ctx, token, guild_id.unwrap(), permission).await.map_err(|err| err.as_api_error())?,
     })
 }
 
@@ -140,23 +131,22 @@ struct SessionInfoResponseInner {
     icon: Option<String>,
 }
 
-#[debug_handler]
 pub async fn session(Extension(ctx): Extension<Arc<ApiContext>>, headers: HeaderMap) -> Result<impl IntoResponse, ApiError> {
     let session = check(&ctx, &headers, None, None).await?;
     let user = session.user.id.to_user(&*ctx).await.map_err(|_| ApiError::CacheMissing)?;
     let mut guilds = Vec::new();
     for guild_id in session.user.guilds.read().await.keys() {
-        match ctx.cache.guild_field(guild_id, |guild| {(guild.name.clone(), guild.icon_url().clone())}) {
+        match ctx.cache.guild_field(guild_id, |guild| {(guild.name.clone(), guild.icon_url())}) {
             None => continue,
             Some(info) => guilds.push(SessionInfoResponseInner {
-                id: guild_id.clone(),
+                id: *guild_id,
                 name: info.0,
                 icon: info.1,
             })
         }
     }
 
-    Ok(Json(SessionInfoResponse {
+    Ok(serialize_response(SessionInfoResponse {
         id: session.user.id,
         icon: user.avatar_url().unwrap_or_else(|| user.default_avatar_url()),
         name: user.name,

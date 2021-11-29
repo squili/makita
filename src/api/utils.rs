@@ -1,22 +1,22 @@
-use std::sync::Arc;
+// Copyright 2021 Squili
+// This program is distributed under the terms of the GNU Affero General Public License
+// You should have received a copy of the license along with this program
+// If not, see <https://www.gnu.org/licenses/#AGPL>
+
+use crate::prelude::*;
 use anyhow::Error;
 use axum::body::{Bytes, Full};
 use axum::http::{HeaderMap, HeaderValue, Response, StatusCode};
-use serde::Serialize;
-use serde_json::{Map, to_string, to_value, Value};
-use crate::macros::s;
 use axum::response::IntoResponse;
+use serde_json::to_string;
 use serenity::cache::Cache;
 use serenity::http::{CacheHttp, Http};
-use serenity::model::id::UserId;
 use sqlx::PgPool;
 use crate::config::Config;
 use crate::modules::{AuthModule, PermissionsModule, PreviewsModule, UpdatesModule};
-use crate::utils::BotContext;
 
 pub enum ApiError {
     Internal(Error),
-    RateLimited(u64),
     BadRequest(&'static str),
     InvalidSession,
     MissingPermission,
@@ -29,32 +29,28 @@ impl From<Error> for ApiError {
     }
 }
 
+#[derive(Serialize)]
+struct ApiErrorResponse {
+    kind: String,
+    msg: String,
+}
+
 impl IntoResponse for ApiError {
     type Body = Full<Bytes>;
     type BodyError = <Self::Body as axum::body::HttpBody>::Error;
 
     fn into_response(self) -> Response<Self::Body> {
-        let mut map = Map::new();
-
-        let (status, kind, data) = match self {
-            ApiError::Internal(err) => (StatusCode::INTERNAL_SERVER_ERROR, s!("INTERNAL"), vec![(s!("info"), Value::String(s!(err)))]),
-            ApiError::RateLimited(limit) => (StatusCode::TOO_MANY_REQUESTS, s!("RATELIMITED"), vec![(s!("wait"), Value::Number(limit.into()))]),
-            ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, s!("BAD_REQUEST"), vec![(s!("msg"), Value::String(s!(msg)))]),
-            ApiError::InvalidSession => (StatusCode::UNAUTHORIZED, s!("INVALID_SESSION"), vec![]),
-            ApiError::MissingPermission => (StatusCode::FORBIDDEN, s!("MISSING_PERMISSION"), vec![]),
-            ApiError::CacheMissing => (StatusCode::NOT_FOUND, s!("CACHE_MISSING"), vec![]),
+        let (status, kind, msg) = match self {
+            ApiError::Internal(err) => (StatusCode::INTERNAL_SERVER_ERROR, s!("INTERNAL"), format!("Internal error: {}", err)),
+            ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, s!("BAD_REQUEST"), s!(msg)),
+            ApiError::InvalidSession => (StatusCode::UNAUTHORIZED, s!("INVALID_SESSION"), s!("Invalid session")),
+            ApiError::MissingPermission => (StatusCode::FORBIDDEN, s!("MISSING_PERMISSION"), s!("Missing permission")),
+            ApiError::CacheMissing => (StatusCode::NOT_FOUND, s!("CACHE_MISSING"), s!("Object missing from cache, please try again later")),
         };
-
-        let mut error_data = Map::new();
-        error_data.insert(s!("kind"), Value::String(kind));
-        for (key, value) in data {
-            error_data.insert(key, value);
-        }
-        map.insert(s!("error"), Value::Object(error_data));
 
         let mut headers = HeaderMap::new();
         headers.insert("Content-Type", HeaderValue::from_static("application/json"));
-        (status, headers, to_string(&Value::Object(map)).unwrap()).into_response()
+        (status, headers, to_string(&ApiErrorResponse { kind, msg }).unwrap()).into_response()
     }
 }
 
@@ -64,13 +60,16 @@ pub fn serialize_response<S: Serialize>(from: S) -> (StatusCode, HeaderMap, Stri
 }
 
 pub fn serialize_response_status<S: Serialize>(from: S, status: StatusCode) -> (StatusCode, HeaderMap, String) {
+    #[derive(Serialize)]
+    struct Wrapper<T: Serialize> {
+        data: T
+    }
+
     // note that we unwrap all errors here - this should not be an issue, as we
     // use both the default Serialize implementation and the official Map structure
-    let mut map = Map::new();
-    map.insert(s!("data"), to_value(from).unwrap());
     let mut headers = HeaderMap::new();
     headers.insert("Content-Type", HeaderValue::from_static("application/json"));
-    (status, headers, to_string(&Value::Object(map)).unwrap())
+    (status, headers, to_string(&Wrapper { data: from }).unwrap())
 }
 
 #[derive(Clone)]

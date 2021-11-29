@@ -2,5 +2,5 @@
 # we can get faster ci builds with caching if we pin the nightly version
 # will update as new features that we need are released, for now just set to the date it was pinned
 channel = "nightly-2021-10-10"
-components = [ "clippy" ]
+components = [ "cargo", "clippy", "rustc", "rustfmt" ]
 targets = [ "x86_64-unknown-linux-gnu" ]

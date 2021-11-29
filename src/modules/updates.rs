@@ -3,6 +3,7 @@
 // You should have received a copy of the license along with this program
 // If not, see <https://www.gnu.org/licenses/#AGPL>
 
+use crate::prelude::*;
 use std::env;
 use std::os::unix::fs::PermissionsExt;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -11,10 +12,10 @@ use semver::Version;
 use serenity::model::interactions::application_command::ApplicationCommandInteraction;
 use tokio::sync::mpsc;
 use tokio::fs;
-use crate::error::BotError;
 use crate::utils::{BotContext, defer_command, FollowupBuilder};
 use crate::macros::invite_url;
 
+#[derive(Serialize)]
 pub struct GitMeta {
     pub tag: &'static str,
     pub commit: &'static str,
@@ -98,7 +99,7 @@ impl UpdatesModule {
     }
 
     pub async fn info_command(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
-        defer_command(&ctx, &interaction).await?;
+        defer_command(&ctx, interaction).await?;
         interaction.create_followup_message(&ctx, |builder| {
             builder.create_embed(|embed| {
                 embed
@@ -119,7 +120,7 @@ impl UpdatesModule {
     }
 
     pub async fn check_command(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
-        defer_command(&ctx, &interaction).await?;
+        defer_command(&ctx, interaction).await?;
         let msg = match check_update().await? {
             Some(update) => format!("Update available from `{}` to `{}`", update.old_version, update.new_version),
             None => "No updates found".to_string()
@@ -131,7 +132,7 @@ impl UpdatesModule {
             .await
     }
     pub async fn update_command(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
-        defer_command(&ctx, &interaction).await?;
+        defer_command(&ctx, interaction).await?;
         do_update().await?;
 
         RESTARTING.store(true, Ordering::SeqCst);
@@ -144,7 +145,7 @@ impl UpdatesModule {
     }
 
     pub async fn restart_command(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
-        defer_command(&ctx, &interaction).await?;
+        defer_command(&ctx, interaction).await?;
         RESTARTING.store(true, Ordering::SeqCst);
         self.shutdown_tx.send(()).await?;
 

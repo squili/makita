@@ -3,17 +3,16 @@
 // You should have received a copy of the license along with this program
 // If not, see <https://www.gnu.org/licenses/#AGPL>
 
+use crate::prelude::*;
 use anyhow::{Result, Error};
 use serenity::model::Permissions as DiscordPermissions;
 use serenity::model::id::{RoleId, UserId, GuildId};
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::{broadcast, RwLock};
 use sqlx::{PgPool, Row};
 use crate::utils::{SqlId, FollowupBuilder, BotContext, defer_command, defer_component};
 use crate::macros::impl_cache_functions;
-use crate::error::BotError;
 use serenity::model::interactions::application_command::ApplicationCommandInteraction;
 use serenity::builder::CreateSelectMenuOptions;
 use crate::custom_ids::{build_custom_id, CustomIdType};
@@ -26,12 +25,14 @@ use crate::tasks::TaskMessage;
 
 macro_rules! impl_permission_type {
     ($($enum: ident, $value: expr, $display: expr, $desc: expr),+) => {
+        #[allow(dead_code)]
         #[derive(Hash, Eq, PartialEq, Copy, Clone, Debug, sqlx::Type)]
         #[sqlx(type_name = "PermissionType")]
         pub enum PermissionType {
             $($enum),+
         }
 
+        #[allow(dead_code)]
         impl PermissionType {
             pub fn as_value(&self) -> &'static str {
                 match self {
@@ -209,7 +210,7 @@ impl PermissionsModule {
     }
 
     pub async fn makita_sudo(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
-        defer_command(&ctx, &interaction).await?;
+        defer_command(&ctx, interaction).await?;
         let sudo_enabled = self.sudo_enabled.load(Ordering::Relaxed);
         self.sudo_enabled.store(!sudo_enabled, Ordering::Relaxed);
 
@@ -220,7 +221,7 @@ impl PermissionsModule {
     }
 
     pub async fn permissions_list(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
-        defer_command(&ctx, &interaction).await?;
+        defer_command(&ctx, interaction).await?;
         interaction.create_followup_message(&ctx.http, |a|
             a.components(|b|
                 b.create_action_row(|c|
@@ -240,7 +241,7 @@ impl PermissionsModule {
     }
 
     pub async fn permissions_list_component(&self, ctx: &BotContext, interaction: &MessageComponentInteraction) -> Result<()> {
-        defer_component(&ctx, &interaction).await?;
+        defer_component(&ctx, interaction).await?;
         let ty = PermissionType::from_string(
             interaction.data.values.get(0).ok_or_else(|| BotError::InvalidRequest("Missing component values".to_string()))?)?;
 
@@ -279,7 +280,7 @@ impl PermissionsModule {
     }
 
     pub async fn permissions_set(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
-        defer_command(&ctx, &interaction).await?;
+        defer_command(&ctx, interaction).await?;
         let ty = PermissionType::from_string(&args.get_string("permission")?)?;
         let permissions = DiscordPermissions::from_bits(args.get_integer("bits")? as u64)
             .ok_or_else(|| BotError::InvalidRequest("Invalid permissions bits".to_string()))?;
@@ -297,7 +298,7 @@ impl PermissionsModule {
     }
 
     pub async fn permissions_add(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
-        defer_command(&ctx, &interaction).await?;
+        defer_command(&ctx, interaction).await?;
         let ty = PermissionType::from_string(&args.get_string("permission")?)?;
         let user = args.get_user("user").map(|s| s.get_user().id).ok();
         let role_object = args.get_role("role").ok();
@@ -332,7 +333,7 @@ impl PermissionsModule {
     }
 
     pub async fn permissions_remove(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
-        defer_command(&ctx, &interaction).await?;
+        defer_command(&ctx, interaction).await?;
         let ty = PermissionType::from_string(&args.get_string("permission")?)?;
         let user = args.get_user("user").map(|s| s.get_user().id).ok();
         let role = args.get_role("role").map(|s| s.id).ok();

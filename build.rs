@@ -4,9 +4,9 @@ use std::fs::{read_to_string, write};
 use anyhow::Result;
 
 fn main() -> Result<()> {
-    // recompile on sql migration changes
+    // sql migrations
     println!("cargo:rerun-if-changed=migrations");
-    // recompile on command definition changes
+    // command definition
     println!("cargo:rerun-if-changed=commands.json5");
 
     // convert json5 commands definition to regular json

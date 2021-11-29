@@ -1,34 +1,40 @@
+// Copyright 2021 Squili
+// This program is distributed under the terms of the GNU Affero General Public License
+// You should have received a copy of the license along with this program
+// If not, see <https://www.gnu.org/licenses/#AGPL>
+
+use crate::prelude::*;
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Weak};
-use jsonwebtokens::{Algorithm, Verifier};
+use std::sync::Weak;
+use jsonwebtokens::Algorithm;
 use serenity::model::id::{GuildId, UserId};
 use tokio::sync::RwLock;
-use serenity::model::guild::{Guild, GuildInfo};
+use serenity::model::guild::GuildInfo;
 use serenity::model::user::CurrentUser;
 use sqlx::{PgPool, Row};
-use std::mem::size_of;
-use std::ops::Add;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 use sqlx::postgres::PgRow;
 use crate::utils::{naive_now, SqlId};
-use chrono::{DateTime, Duration, NaiveDate, NaiveDateTime, Utc};
+use chrono::{Duration, NaiveDateTime};
 use anyhow::Result;
 use std::result::Result as StdResult;
 use std::str::FromStr;
-use crate::api::utils::{ApiContext, api_map, ApiError};
+use crate::api::utils::ApiError;
 use crate::modules::PermissionType;
 use std::time::Duration as StdDuration;
 
+type BotUserGuilds = RwLock<HashMap<GuildId, HashMap<PermissionType, (bool, SystemTime)>>>;
+
 pub struct BotUser {
     pub id: UserId,
-    pub guilds: RwLock<HashMap<GuildId, HashMap<PermissionType, (bool, SystemTime)>>>,
+    pub guilds: BotUserGuilds,
     pub sessions: RwLock<Vec<Weak<Session>>>,
 }
 
 pub struct Session {
     pub id: i64,
     pub user: Arc<BotUser>,
-    pub expire_at: NaiveDateTime, // TODO: automatically revoke expired sessions
+    pub expire_at: NaiveDateTime, // TODO: automatically revoke expired sessions in task
 }
 
 pub struct AuthModule {
@@ -142,7 +148,7 @@ impl AuthModule {
         let expire_at = naive_now() + Duration::days(7);
         let row = sqlx::query("insert into Sessions (user_id, expire_at) values ($1, $2) returning id")
             .bind(SqlId(bot_user.id))
-            .bind(expire_at.clone())
+            .bind(expire_at)
             .fetch_one(&self.pool)
             .await?;
 
@@ -172,7 +178,7 @@ impl AuthModule {
         }
 
         if let Some(guild) = guild {
-            if !session.user.guilds.read().await.contains_key(&guild) {
+            if !session.user.guilds.read().await.contains_key(guild) {
                 return Err(AuthQueryError::NotInGuild)
             }
         }
@@ -183,9 +189,9 @@ impl AuthModule {
     pub async fn query_permission(&self, ctx: &ApiContext, session_token: &str, guild: &GuildId, permission: &PermissionType) -> StdResult<Arc<Session>, AuthQueryError> {
         let session = self.query(session_token, Some(guild)).await?;
 
-        let pair = match session.user.guilds.read().await.get(&guild) {
+        let pair = match session.user.guilds.read().await.get(guild) {
             None => return Err(AuthQueryError::NotInGuild),
-            Some(cache) => cache.get(&permission).cloned()
+            Some(cache) => cache.get(permission).cloned()
         };
 
         if pair.is_none() || SystemTime::now() > pair.unwrap().1 {
@@ -194,19 +200,15 @@ impl AuthModule {
             let mut upgraded_roles = Vec::new();
             let owner = ctx.cache.guild_field(guild, |g| {
                 for role in member.roles {
-                    match g.roles.get(&role) {
-                        Some(data) => upgraded_roles.push(data.clone()),
-                        None => {}
+                    if let Some(data) = g.roles.get(&role) {
+                        upgraded_roles.push(data.clone())
                     }
                 }
                 g.owner_id
             }).ok_or(AuthQueryError::CacheError)?;
-            let data = ctx.permissions.check(&permission, &guild, &owner, &session.user.id, &upgraded_roles).await;
-            let pair = (match data {
-                Some(_) => false,
-                None => true,
-            }, SystemTime::now() + StdDuration::from_secs(60 * 15));
-            session.user.guilds.write().await.get_mut(&guild).ok_or(AuthQueryError::CacheError)?.insert(*permission, pair);
+            let data = ctx.permissions.check(permission, guild, &owner, &session.user.id, &upgraded_roles).await;
+            let pair = (data.is_none(), SystemTime::now() + StdDuration::from_secs(60 * 15));
+            session.user.guilds.write().await.get_mut(guild).ok_or(AuthQueryError::CacheError)?.insert(*permission, pair);
             if data.is_some() {
                 Err(AuthQueryError::MissingPermission)
             } else {
@@ -231,6 +233,6 @@ impl AuthModule {
     fn verify_session_token(&self, token: &str) -> Option<i64> {
         let (message, signature) = token.split_once(".")?;
         self.verifier.verify(None, &message, &signature).ok()?;
-        Some(i64::from_str(message).ok()?)
+        i64::from_str(message).ok()
     }
 }

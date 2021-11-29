@@ -3,20 +3,18 @@
 // You should have received a copy of the license along with this program
 // If not, see <https://www.gnu.org/licenses/#AGPL>
 
+use crate::prelude::*;
 use anyhow::Result;
 use chrono::{Duration, Utc};
-use log::error;
 use serenity::client::Cache;
 use serenity::model::id::GuildId;
 use sqlx::postgres::PgRow;
 use sqlx::{PgPool, Row};
 use std::future::Future;
-use std::sync::Arc;
 use serenity::http::{CacheHttp, Http};
 use tokio::sync::broadcast;
 use tokio::time::sleep;
 use crate::utils::{BotContext, SqlId};
-use crate::macros::debug;
 
 #[derive(Clone, Debug)]
 pub enum TaskMessage {

@@ -1,0 +1,111 @@
+# Copyright 2021 Squili
+# This program is distributed under the terms of the GNU Affero General Public License
+# You should have received a copy of the license along with this program
+# If not, see <https://www.gnu.org/licenses/#AGPL>
+
+openapi: 3.0.3 # oazapfts doesn't support 3.1.0 yet
+
+info:
+  title: Makita Api
+  version: 1.0.0
+  license:
+    name: AGPL-3.0
+    url: https://www.gnu.org/licenses/#AGPL
+
+components:
+  securitySchemes:
+    ApiKey:
+      type: apiKey
+      in: header
+      name: authorization
+
+  responses:
+    ErrorResponse:
+      description: abc
+      content:
+        application/json:
+          schema:
+            properties:
+              kind:
+                type: string
+              msg:
+                type: string
+
+  schemas:
+    LocalBuildInfo:
+      properties:
+        package:
+          type: string
+    GitBuildInfo:
+      properties:
+        tag:
+          type: string
+        commit:
+          type: string
+        repo:
+          type: string
+
+security:
+  - ApiKey: []
+
+paths:
+
+  /:
+    get:
+      summary: Gets API info
+      operationId: getApiInfo
+      security:
+        - ApiKey: []
+      responses:
+        200:
+          description: API info
+          content:
+            application/json:
+              schema:
+                properties:
+                  docs:
+                    type: string
+                  invite:
+                    type: string
+                  build:
+                    oneOf:
+                      - $ref: '#/components/schemas/LocalBuildInfo'
+                      - $ref: '#/components/schemas/GitBuildInfo'
+                    discriminator:
+                      propertyName: kind
+                      mapping:
+                        local: '#/components/schemas/LocalBuildInfo'
+                        git: '#/components/schemas/GitBuildInfo'
+
+  /auth/session:
+    get:
+      summary: Gets info about the current session
+      operationId: getSessionInfo
+      responses:
+        200:
+          description: Session info
+          content:
+            application/json:
+              schema:
+                properties:
+                  id:
+                    type: integer
+                    minimum: 0
+                  name:
+                    type: string
+                  icon:
+                    type: string
+                  guilds:
+                    type: array
+                    items:
+                      properties:
+                        id:
+                          type: integer
+                          minimum: 0
+                        name:
+                          type: string
+                        icon:
+                          type: string
+                          nullable: true
+        default:
+          $ref: '#/components/responses/ErrorResponse'

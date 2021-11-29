@@ -7,7 +7,6 @@ use std::fmt::{Display, Formatter, Debug};
 use std::error::Error as StdError;
 use serenity::model::id::UserId;
 use serenity::model::misc::Mentionable;
-use crate::modules::PermissionType;
 
 pub enum BotError {
     Generic(String),

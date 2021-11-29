@@ -3,18 +3,16 @@
 // You should have received a copy of the license along with this program
 // If not, see <https://www.gnu.org/licenses/#AGPL>
 
+use crate::prelude::*;
 use anyhow::{Result, Error};
-use serenity::model::guild::Role;
-use crate::handler::{Handler, handler_log};
+use crate::handler::Handler;
 use serenity::model::interactions::application_command::ApplicationCommandInteraction;
 use crate::decode;
-use crate::error::BotError;
 use serenity::model::interactions::message_component::MessageComponentInteraction;
 use crate::custom_ids::{parse_custom_id, CustomIdType};
 use crate::modules::PermissionType;
-use crate::utils::BotContext;
 use crate::macros::debug;
-use serenity::model::interactions::{Interaction, InteractionApplicationCommandCallbackDataFlags, InteractionResponseType};
+use serenity::model::interactions::{InteractionApplicationCommandCallbackDataFlags, InteractionResponseType};
 use serenity::utils::Color;
 
 macro ensure_guild {
@@ -141,7 +139,7 @@ pub async fn message_router(handler: &Handler, ctx: &BotContext, interaction: &A
         }
     }
 
-    let message = interaction.data.resolved.messages.iter().next().ok_or_else(|| BotError::Internal(13))?.1;
+    let message = interaction.data.resolved.messages.iter().next().ok_or(BotError::Internal(13))?.1;
 
     match interaction.data.name.as_str() {
         "Archive" => ensure_permission!(CreateArchive, handler.previews.previews_archive_context(ctx, interaction, message).await),

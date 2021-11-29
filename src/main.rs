@@ -21,21 +21,20 @@ mod custom_ids;
 mod cli;
 mod modules;
 mod api;
+mod prelude;
 
+use prelude::*;
 use std::{env, fs};
 use crate::config::Config;
 use crate::handler::Handler;
 use anyhow::{Error, Result};
-use log::info;
 use log::LevelFilter;
 use serenity::client::bridge::gateway::GatewayIntents;
-use serenity::http::Http;
 use serenity::Client;
 use sqlx::postgres::PgPoolOptions;
 use std::fs::read_to_string;
 use std::os::unix::process::CommandExt;
 use std::process::Command;
-use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use async_ctrlc::CtrlC;
 use crate::tasks::{background_task, TaskContext, TaskMessage};
@@ -48,11 +47,8 @@ use clap::Clap;
 use jsonwebtokens::{Algorithm, AlgorithmID};
 use serenity::model::id::{ApplicationId, UserId};
 use tokio::sync::{broadcast, mpsc};
-use crate::api::utils::ApiContext;
 use crate::modules::updates;
 use crate::modules::updates::RESTARTING;
-use crate::utils::BotContext;
-use crate::macros::s;
 
 fn main() -> Result<()> {
     let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -187,18 +183,17 @@ async fn start() -> Result<()> {
         shutdown_tx_clone.send(()).await.expect("Error sending shutdown signal");
     });
 
-    // temporarily disable api server
-    // info!("spawning api server");
-    // api::start(Arc::new(ApiContext {
-    //     http: client.cache_and_http.http.clone(),
-    //     cache: client.cache_and_http.cache.clone(),
-    //     pool,
-    //     config,
-    //     updates: updates_module,
-    //     permissions: permissions_module,
-    //     previews: previews_module,
-    //     auth: auth_module,
-    // })).await?;
+    info!("spawning api server");
+    api::start(Arc::new(ApiContext {
+        http: client.cache_and_http.http.clone(),
+        cache: client.cache_and_http.cache.clone(),
+        pool,
+        config,
+        updates: updates_module,
+        permissions: permissions_module,
+        previews: previews_module,
+        auth: auth_module,
+    })).await?;
 
     info!("starting client");
     let shard_manager = client.shard_manager.clone();

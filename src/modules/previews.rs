@@ -3,28 +3,25 @@
 // You should have received a copy of the license along with this program
 // If not, see <https://www.gnu.org/licenses/#AGPL>
 
+use crate::prelude::*;
 use std::borrow::Cow;
 use anyhow::{Error, Result};
-use serenity::model::channel::{Message, GuildChannel, Attachment, MessageType, MessageFlags, PartialChannel, Channel};
+use serenity::model::channel::{Message, GuildChannel, Attachment, MessageType, MessageFlags, Channel};
 use serenity::model::id::{GuildId, ChannelId, MessageId, UserId};
 use sqlx::{PgPool, Row};
 use regex::Regex;
 use tokio::sync::{broadcast, RwLock};
 use std::collections::HashMap;
 use std::str::FromStr;
-use std::sync::Arc;
 use serenity::builder::CreateEmbed;
 use serenity::http::AttachmentType;
-use serenity::model::guild::{Guild, Member};
+use serenity::model::guild::Guild;
 use crate::utils::{remove_indexes, SqlId, default_arg, FollowupBuilder, BotContext, Link, defer_command};
 use sqlx::postgres::PgRow;
 use crate::decode::SlashMap;
 use serenity::model::interactions::application_command::ApplicationCommandInteraction;
-use serenity::model::interactions::InteractionApplicationCommandCallbackDataFlags;
 use serenity::model::misc::Mentionable;
-use serenity::model::prelude::InteractionResponseType;
-use crate::error::BotError;
-use crate::macros::{impl_cache_functions, debug, s};
+use crate::macros::impl_cache_functions;
 use crate::tasks::TaskMessage;
 
 #[derive(Default)]
@@ -410,7 +407,7 @@ impl PreviewsModule {
     }
 
     pub async fn previews_add(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
-        defer_command(&ctx, &interaction).await?;
+        defer_command(&ctx, interaction).await?;
         let target = args.get_channel("target")?;
         let guild_id = interaction.guild_id.ok_or(BotError::GuildOnly)?;
 
@@ -439,7 +436,7 @@ impl PreviewsModule {
     }
 
     pub async fn previews_remove(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
-        defer_command(&ctx, &interaction).await?;
+        defer_command(&ctx, interaction).await?;
         let target = args.get_channel("target")?;
         let guild_id = interaction.guild_id.ok_or(BotError::GuildOnly)?;
 
@@ -469,7 +466,7 @@ impl PreviewsModule {
     }
 
     pub async fn previews_list(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
-        defer_command(&ctx, &interaction).await?;
+        defer_command(&ctx, interaction).await?;
         let mut items = vec!["**Channels**".to_string()];
 
         self.read_cache(&interaction.guild_id.ok_or(BotError::GuildOnly)?, |data| {
@@ -492,7 +489,7 @@ impl PreviewsModule {
     }
 
     pub async fn previews_view(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
-        defer_command(&ctx, &interaction).await?;
+        defer_command(&ctx, interaction).await?;
         let target = args.get_string("target")?;
 
         let captures = self.link_regex.captures(&target).ok_or_else(|| BotError::Generic("Malformed link".to_string()))?;
@@ -522,7 +519,7 @@ impl PreviewsModule {
     }
 
     pub async fn previews_archive(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
-        defer_command(&ctx, &interaction).await?;
+        defer_command(&ctx, interaction).await?;
         let guild_id = interaction.guild_id.unwrap();
         match args.get_channel("target").ok() {
             // set
@@ -565,11 +562,11 @@ impl PreviewsModule {
 
         let guild_id = interaction.guild_id.unwrap();
         let archive_channel = self.read_cache(&guild_id, |data| {
-            data.archive_channel.clone()
+            data.archive_channel
         }).await.ok_or_else(|| BotError::Generic("Archive channel not set".to_string()))?;
 
         let (source_embeds, attachments) =
-            self.preview(ctx, &interaction.user.id, &Some(guild_id), guild_id.clone(),
+            self.preview(ctx, &interaction.user.id, &Some(guild_id), guild_id,
                          interaction.channel_id, message.id).await?;
 
         // add footer to first embed

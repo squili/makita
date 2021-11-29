@@ -3,7 +3,7 @@
 // You should have received a copy of the license along with this program
 // If not, see <https://www.gnu.org/licenses/#AGPL>
 
-use std::sync::Arc;
+use crate::prelude::*;
 use log::{info, error};
 use serenity::async_trait;
 use serenity::client::{Context, EventHandler};
@@ -12,13 +12,11 @@ use serenity::model::gateway::{Activity, Ready};
 use sqlx::{Postgres, Pool};
 use serenity::model::guild::Guild;
 use serenity::model::id::{ApplicationId, UserId};
-use serenity::model::interactions::{Interaction, InteractionApplicationCommandCallbackDataFlags, InteractionResponseType};
+use serenity::model::interactions::Interaction;
 use serenity::model::interactions::application_command::ApplicationCommandType;
 use crate::router;
 use serenity::utils::Color;
-use crate::error::BotError;
 use crate::modules::{AuthModule, PermissionsModule, PreviewsModule, UpdatesModule};
-use crate::utils::BotContext;
 
 pub struct Handler {
     pub pool: Pool<Postgres>,
