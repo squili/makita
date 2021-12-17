@@ -7,6 +7,7 @@ use crate::prelude::*;
 use std::time::{SystemTime, UNIX_EPOCH};
 use anyhow::Result;
 use chrono::NaiveDateTime;
+use serde::Deserializer;
 use serenity::cache::Cache;
 use serenity::CacheAndHttp;
 use serenity::client::Context;
@@ -281,4 +282,29 @@ pub async fn defer_command<T: AsRef<Http>>(http: &T, interaction: &ApplicationCo
 pub async fn defer_component<T: AsRef<Http>>(http: &T, interaction: &MessageComponentInteraction) -> Result<()> {
     interaction.create_interaction_response(http.as_ref(), |r| r.kind(InteractionResponseType::DeferredUpdateMessage)).await?;
     Ok(())
+}
+
+#[derive(Debug)]
+pub enum OptionalOption<T> {
+    Present(Option<T>),
+    Missing,
+}
+
+impl<T> Default for OptionalOption<T> {
+    fn default() -> Self {
+        OptionalOption::Missing
+    }
+}
+
+impl<'de, T> Deserialize<'de> for OptionalOption<T>
+    where T: Deserialize<'de>
+{
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+        where D: Deserializer<'de>,
+    {
+        Ok(match Option::<T>::deserialize(deserializer) {
+            Ok(val) => OptionalOption::Present(val),
+            Err(_) => OptionalOption::Missing,
+        })
+    }
 }

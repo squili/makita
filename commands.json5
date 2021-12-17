@@ -74,6 +74,8 @@
             required: true,
             choices: [
               { name: 'Administrator', value: 'Administrator' },
+              { name: 'Web Viewer', value: 'WebViewer' },
+              { name: 'Web Editor', value: 'WebEditor' },
               { name: 'Manage Permissions', value: 'ManagePermissions' },
               { name: 'Manage Previews', value: 'ManagePreviews' },
               { name: 'Create Archive', value: 'CreateArchive' }
@@ -99,6 +101,8 @@
             required: true,
             choices: [
               { name: 'Administrator', value: 'Administrator' },
+              { name: 'Web Viewer', value: 'WebViewer' },
+              { name: 'Web Editor', value: 'WebEditor' },
               { name: 'Manage Permissions', value: 'ManagePermissions' },
               { name: 'Manage Previews', value: 'ManagePreviews' },
               { name: 'Create Archive', value: 'CreateArchive' }
@@ -128,6 +132,8 @@
             required: true,
             choices: [
               { name: 'Administrator', value: 'Administrator' },
+              { name: 'Web Viewer', value: 'WebViewer' },
+              { name: 'Web Editor', value: 'WebEditor' },
               { name: 'Manage Permissions', value: 'ManagePermissions' },
               { name: 'Manage Previews', value: 'ManagePreviews' },
               { name: 'Create Archive', value: 'CreateArchive' }

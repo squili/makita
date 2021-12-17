@@ -63,6 +63,8 @@ macro_rules! impl_permission_type {
 
 impl_permission_type!(
     Administrator, "Administrator", "Administrator", "Access to all permissions",
+    WebViewer, "WebViewer", "Web Viewer", "View access to the website",
+    WebEditor, "WebEditor", "Web Editor", "Edit access to the website",
     ManagePermissions, "ManagePermissions", "Manage Permissions", "Manage bot permissions",
     ManagePreviews, "ManagePreviews", "Manage Previews", "Manage preview configuration",
     CreateArchive, "CreateArchive", "Create Archive", "Create entries in the archive channel"
@@ -82,6 +84,8 @@ impl PermissionData {
     pub fn default(ty: &PermissionType) -> Self {
         match ty {
             PermissionType::Administrator => Self::new(&DiscordPermissions::ADMINISTRATOR),
+            PermissionType::WebViewer => Self::new(&DiscordPermissions::MANAGE_GUILD),
+            PermissionType::WebEditor => Self::new(&DiscordPermissions::MANAGE_GUILD),
             PermissionType::ManagePermissions => Self::new(&DiscordPermissions::ADMINISTRATOR),
             PermissionType::ManagePreviews => Self::new(&DiscordPermissions::MANAGE_GUILD),
             PermissionType::CreateArchive => Self::new(&DiscordPermissions::MANAGE_MESSAGES),
@@ -99,6 +103,8 @@ impl PermissionEntry {
     fn new(guild_id: &GuildId) -> Self {
         let mut entry = Self { data: Default::default(), guild_id: *guild_id };
         entry.data.insert(PermissionType::Administrator, PermissionData::default(&PermissionType::Administrator));
+        entry.data.insert(PermissionType::WebViewer, PermissionData::default(&PermissionType::WebViewer));
+        entry.data.insert(PermissionType::WebEditor, PermissionData::default(&PermissionType::WebEditor));
         entry.data.insert(PermissionType::ManagePermissions, PermissionData::default(&PermissionType::ManagePermissions));
         entry.data.insert(PermissionType::ManagePreviews, PermissionData::default(&PermissionType::ManagePreviews));
         entry.data.insert(PermissionType::CreateArchive, PermissionData::default(&PermissionType::CreateArchive));

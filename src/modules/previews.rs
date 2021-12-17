@@ -26,8 +26,8 @@ use crate::tasks::TaskMessage;
 
 #[derive(Default)]
 pub struct PreviewsConfig {
-    auto_channels: Vec<ChannelId>,
-    archive_channel: Option<ChannelId>,
+    pub auto_channels: Vec<ChannelId>,
+    pub archive_channel: Option<ChannelId>,
 }
 
 pub struct PreviewsModule {
@@ -118,7 +118,7 @@ impl PreviewsModule {
             return embed;
         }
 
-        if filter_kind!(Unknown, GuildInviteReminder, GuildDiscoveryDisqualified,
+        if filter_kind!(Unknown, GuildInviteReminder,
             GuildDiscoveryRequalified, GuildDiscoveryGracePeriodInitialWarning,
             GuildDiscoveryGracePeriodFinalWarning, ThreadStarterMessage, ContextMenuCommand) {
             UserId(719046554744520754).create_dm_channel(&ctx).await.unwrap()
@@ -211,6 +211,9 @@ impl PreviewsModule {
                         },
                         None => format!("#{}", message.content)
                     }, maybe_link_foreign, message.channel_id.mention()));
+            }
+            MessageType::GuildDiscoveryDisqualified => {
+                embed.description("You got disqualified from discovery! What a loser!");
             }
             _ => {}
         };
@@ -518,20 +521,18 @@ impl PreviewsModule {
         Ok(())
     }
 
-    pub async fn previews_archive(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
-        defer_command(&ctx, interaction).await?;
-        let guild_id = interaction.guild_id.unwrap();
-        match args.get_channel("target").ok() {
+    pub async fn update_archive(&self, pool: &PgPool, from: Option<ChannelId>, guild_id: GuildId) -> Result<()> {
+        match from {
             // set
             Some(target) => {
                 self.write_cache(&guild_id, |data| {
-                    data.archive_channel = Some(target.id);
+                    data.archive_channel = Some(target);
                 }).await;
 
                 sqlx::query("insert into ArchiveChannel (guild_id, channel_id) values ($1, $2) on conflict on constraint archive_idx do update set channel_id = $2")
                     .bind(&SqlId(guild_id))
-                    .bind(&SqlId(target.id))
-                    .execute(&ctx.pool)
+                    .bind(&SqlId(target))
+                    .execute(pool)
                     .await?;
             }
             // unset
@@ -542,10 +543,17 @@ impl PreviewsModule {
 
                 sqlx::query("delete from ArchiveChannel where guild_id = $1")
                     .bind(&SqlId(guild_id))
-                    .execute(&ctx.pool)
+                    .execute(pool)
                     .await?;
             }
-        }
+        };
+        Ok(())
+    }
+
+    pub async fn previews_archive(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
+        defer_command(&ctx, interaction).await?;
+        let guild_id = interaction.guild_id.unwrap();
+        self.update_archive(&ctx.pool, args.get_channel("target").ok().map(|c| c.id), guild_id.clone()).await?;
 
         FollowupBuilder::new()
             .description("Success")

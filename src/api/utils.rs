@@ -5,7 +5,7 @@
 
 use crate::prelude::*;
 use anyhow::Error;
-use axum::body::{Bytes, Full};
+use axum::body::BoxBody;
 use axum::http::{HeaderMap, HeaderValue, Response, StatusCode};
 use axum::response::IntoResponse;
 use serde_json::to_string;
@@ -36,10 +36,7 @@ struct ApiErrorResponse {
 }
 
 impl IntoResponse for ApiError {
-    type Body = Full<Bytes>;
-    type BodyError = <Self::Body as axum::body::HttpBody>::Error;
-
-    fn into_response(self) -> Response<Self::Body> {
+    fn into_response(self) -> Response<BoxBody> {
         let (status, kind, msg) = match self {
             ApiError::Internal(err) => (StatusCode::INTERNAL_SERVER_ERROR, s!("INTERNAL"), format!("Internal error: {}", err)),
             ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, s!("BAD_REQUEST"), s!(msg)),

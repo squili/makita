@@ -7,7 +7,7 @@ pub use crate::prelude::*;
 use axum::extract::Extension;
 use axum::response::IntoResponse;
 use axum::{AddExtensionLayer, Router};
-use axum::routing::get;
+use axum::routing::{get, delete};
 use reqwest::header::AUTHORIZATION;
 use reqwest::Method;
 use tower_http::cors::{any, CorsLayer};
@@ -18,6 +18,7 @@ use crate::updates::GitMeta;
 
 pub mod utils;
 mod auth;
+mod previews;
 
 pub async fn start(ctx: Arc<ApiContext>) -> Result<(), anyhow::Error> {
     let app = Router::new()
@@ -25,6 +26,10 @@ pub async fn start(ctx: Arc<ApiContext>) -> Result<(), anyhow::Error> {
         .route("/auth/redirect", get(auth::redirect))
         .route("/auth/callback", get(auth::callback))
         .route("/auth/session", get(auth::session))
+        .route("/auth/sessions", delete(auth::clear_sessions))
+        // .route("/auth/:id/viewer", get(auth::check_viewer))
+        // .route("/auth/:id/editor", get(auth::check_editor))
+        .route("/guilds/:id/previews", get(previews::get_previews).patch(previews::patch_previews))
         .layer(AddExtensionLayer::new(ctx.clone()))
         .layer(CorsLayer::new()
             .allow_origin(any())

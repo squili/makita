@@ -3,11 +3,12 @@
 // You should have received a copy of the license along with this program
 // If not, see <https://www.gnu.org/licenses/#AGPL>
 
+use std::borrow::Borrow;
 use crate::prelude::*;
 use std::collections::HashMap;
 use std::lazy::SyncLazy;
 use std::str::FromStr;
-use axum::extract::{Extension, Query};
+use axum::extract::{Extension, Path, Query};
 use axum::http::{HeaderMap, Uri};
 use axum::response::{IntoResponse, Redirect};
 use serde::{Serialize, Deserialize};
@@ -15,7 +16,9 @@ use crate::api::utils::{ApiError, api_map, serialize_response};
 use serenity::http::{GuildPagination, Http};
 use serenity::model::id::{GuildId, UserId};
 use anyhow::Error as AnyhowError;
-use crate::modules::{PermissionType, Session};
+use axum::Json;
+use serde_json::{Map, Value};
+use crate::modules::{Session, WebPermissionLevel};
 
 static REQWEST_CLIENT: SyncLazy<reqwest::Client> = SyncLazy::new(|| {
     reqwest::Client::builder()
@@ -103,17 +106,18 @@ pub async fn callback(
     Ok(Redirect::temporary(Uri::from_str(&format!("{}/authenticate?token={}", ctx.config.frontend_url, token)).unwrap()))
 }
 
-pub async fn check(ctx: &Arc<ApiContext>, headers: &HeaderMap, guild_id: Option<&GuildId>, permission: Option<&PermissionType>) -> Result<Arc<Session>, ApiError> {
+pub async fn check(ctx: &Arc<ApiContext>, headers: &HeaderMap, guild_id: Option<&GuildId>, permission: &WebPermissionLevel) -> Result<Arc<Session>, ApiError> {
     let token = headers
         .get("authorization")
         .ok_or(ApiError::BadRequest("Missing `authorization` header"))?
         .to_str()
         .map_err(|_| ApiError::BadRequest("Invalid character in `authorization` header"))?;
 
-    Ok(match permission {
-        None => ctx.auth.query(token, guild_id).await.map_err(|err| err.as_api_error())?,
-        Some(permission) => ctx.auth.query_permission(ctx, token, guild_id.unwrap(), permission).await.map_err(|err| err.as_api_error())?,
-    })
+    let session = ctx.auth.query(token, guild_id).await.map_err(|err| err.as_api_error())?;
+    if let WebPermissionLevel::None = permission {} else {
+        ctx.auth.query_permission(ctx, &session, guild_id.unwrap(), permission).await.map_err(|err| err.as_api_error())?;
+    }
+    Ok(session)
 }
 
 #[derive(Serialize)]
@@ -129,19 +133,28 @@ struct SessionInfoResponseInner {
     id: GuildId,
     name: String,
     icon: Option<String>,
+    viewer: bool,
+    editor: bool,
 }
 
 pub async fn session(Extension(ctx): Extension<Arc<ApiContext>>, headers: HeaderMap) -> Result<impl IntoResponse, ApiError> {
-    let session = check(&ctx, &headers, None, None).await?;
+    let session = check(&ctx, &headers, None, &WebPermissionLevel::None).await?;
     let user = session.user.id.to_user(&*ctx).await.map_err(|_| ApiError::CacheMissing)?;
     let mut guilds = Vec::new();
-    for guild_id in session.user.guilds.read().await.keys() {
-        match ctx.cache.guild_field(guild_id, |guild| {(guild.name.clone(), guild.icon_url())}) {
-            None => continue,
-            Some(info) => guilds.push(SessionInfoResponseInner {
-                id: *guild_id,
-                name: info.0,
-                icon: info.1,
+    let handle = session.user.guilds.read().await;
+    let iter = handle.keys().cloned().collect::<Vec<GuildId>>();
+    drop(handle);
+    for guild_id in iter {
+        if let Some((name, icon)) = ctx.cache.guild_field(guild_id, |guild| {(guild.name.clone(), guild.icon_url())}) {
+            let level = ctx.auth.query_permission(ctx.clone().borrow(), &session, &guild_id, &WebPermissionLevel::None)
+                .await.map_err(|e| e.as_api_error())?;
+            if level == WebPermissionLevel::None {
+                continue
+            }
+            guilds.push(SessionInfoResponseInner {
+                id: guild_id, name, icon,
+                viewer: level >= WebPermissionLevel::Viewer,
+                editor: level == WebPermissionLevel::Editor,
             })
         }
     }
@@ -152,4 +165,21 @@ pub async fn session(Extension(ctx): Extension<Arc<ApiContext>>, headers: Header
         name: user.name,
         guilds
     }))
+}
+
+pub async fn clear_sessions(Extension(ctx): Extension<Arc<ApiContext>>, headers: HeaderMap) -> Result<impl IntoResponse, ApiError> {
+    check(&ctx, &headers, None, &WebPermissionLevel::None).await?;
+    Ok("TODO")
+}
+
+#[allow(dead_code)]
+pub async fn check_viewer(Extension(ctx): Extension<Arc<ApiContext>>, Path(guild_id): Path<u64>, headers: HeaderMap) -> Result<impl IntoResponse, ApiError> {
+    check(&ctx, &headers, Some(&GuildId(guild_id)), &WebPermissionLevel::Viewer).await?;
+    Ok(Json(Value::Object(Map::new())))
+}
+
+#[allow(dead_code)]
+pub async fn check_editor(Extension(ctx): Extension<Arc<ApiContext>>, Path(guild_id): Path<u64>, headers: HeaderMap) -> Result<impl IntoResponse, ApiError> {
+    check(&ctx, &headers, Some(&GuildId(guild_id)), &WebPermissionLevel::Editor).await?;
+    Ok(Json(Value::Object(Map::new())))
 }

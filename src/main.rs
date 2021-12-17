@@ -137,35 +137,39 @@ async fn start() -> Result<()> {
         )
         .await?;
 
-    info!("initializing application commands");
-    let command_data = include_bytes!(env!("MAKITA_SLASH_LOCATION"));
-    let mut iter = command_data.split(|c| c == &b'\n');
+    if option_env!("SKIP_COMMANDS").is_some() {
+        warn!("skipping initializing application commands");
+    } else {
+        info!("initializing application commands");
+        let command_data = include_bytes!(env!("MAKITA_SLASH_LOCATION"));
+        let mut iter = command_data.split(|c| c == &b'\n');
 
-    let mut req = RequestBuilder::new(RouteInfo::CreateGuildApplicationCommand {
-        application_id: client.cache_and_http.http.application_id,
-        guild_id: config.manager_guild,
-    });
-    req.body(iter.next());
-    let _: ApplicationCommand = client.cache_and_http.http.fire(req.build()).await?;
+        let mut req = RequestBuilder::new(RouteInfo::CreateGuildApplicationCommand {
+            application_id: client.cache_and_http.http.application_id,
+            guild_id: config.manager_guild,
+        });
+        req.body(iter.next());
+        let _: ApplicationCommand = client.cache_and_http.http.fire(req.build()).await?;
 
-    for entry in iter {
-        let _: ApplicationCommand = match config.commands_guild {
-            Some(id) => {
-                let mut req = RequestBuilder::new(RouteInfo::CreateGuildApplicationCommand {
-                    application_id: client.cache_and_http.http.application_id,
-                    guild_id: id.0,
-                });
-                req.body(Some(entry));
-                client.cache_and_http.http.fire(req.build()).await?
-            }
-            None => {
-                let mut req = RequestBuilder::new(RouteInfo::CreateGlobalApplicationCommand {
-                    application_id: client.cache_and_http.http.application_id,
-                });
-                req.body(Some(entry));
-                client.cache_and_http.http.fire(req.build()).await?
-            }
-        };
+        for entry in iter {
+            let _: ApplicationCommand = match config.commands_guild {
+                Some(id) => {
+                    let mut req = RequestBuilder::new(RouteInfo::CreateGuildApplicationCommand {
+                        application_id: client.cache_and_http.http.application_id,
+                        guild_id: id.0,
+                    });
+                    req.body(Some(entry));
+                    client.cache_and_http.http.fire(req.build()).await?
+                }
+                None => {
+                    let mut req = RequestBuilder::new(RouteInfo::CreateGlobalApplicationCommand {
+                        application_id: client.cache_and_http.http.application_id,
+                    });
+                    req.body(Some(entry));
+                    client.cache_and_http.http.fire(req.build()).await?
+                }
+            };
+        }
     }
 
     info!("spawning tasks");

@@ -20,14 +20,25 @@ use anyhow::Result;
 use std::result::Result as StdResult;
 use std::str::FromStr;
 use crate::api::utils::ApiError;
-use crate::modules::PermissionType;
 use std::time::Duration as StdDuration;
+use crate::modules::PermissionType;
 
-type BotUserGuilds = RwLock<HashMap<GuildId, HashMap<PermissionType, (bool, SystemTime)>>>;
+#[derive(Clone, PartialEq, PartialOrd, Debug)]
+pub enum WebPermissionLevel {
+    None,
+    Viewer,
+    Editor,
+}
+
+#[derive(Clone)]
+pub struct GuildPermissionCache {
+    level: WebPermissionLevel,
+    expiration: SystemTime,
+}
 
 pub struct BotUser {
     pub id: UserId,
-    pub guilds: BotUserGuilds,
+    pub guilds: RwLock<HashMap<GuildId, Option<GuildPermissionCache>>>,
     pub sessions: RwLock<Vec<Weak<Session>>>,
 }
 
@@ -84,7 +95,7 @@ impl AuthModule {
         for row in rows {
             let mut guilds = HashMap::new();
             for guild in row.1 {
-                guilds.insert(guild, HashMap::new());
+                guilds.insert(guild, None);
             }
             self.users.write().await.insert(row.0, Arc::new(BotUser {
                 id: row.0,
@@ -119,7 +130,7 @@ impl AuthModule {
 
         let mut guild_map = HashMap::new();
         for guild in guilds {
-            guild_map.insert(guild.id, HashMap::new());
+            guild_map.insert(guild.id, None);
         }
         let bot_user = Arc::new(BotUser {
             id: user.id,
@@ -186,15 +197,13 @@ impl AuthModule {
         Ok(session)
     }
 
-    pub async fn query_permission(&self, ctx: &ApiContext, session_token: &str, guild: &GuildId, permission: &PermissionType) -> StdResult<Arc<Session>, AuthQueryError> {
-        let session = self.query(session_token, Some(guild)).await?;
-
-        let pair = match session.user.guilds.read().await.get(guild) {
+    pub async fn query_permission(&self, ctx: &ApiContext, session: &Arc<Session>, guild: &GuildId, level: &WebPermissionLevel) -> StdResult<WebPermissionLevel, AuthQueryError> {
+        let cache = match session.user.guilds.read().await.get(guild) {
             None => return Err(AuthQueryError::NotInGuild),
-            Some(cache) => cache.get(permission).cloned()
+            Some(cache) => cache.clone(),
         };
 
-        if pair.is_none() || SystemTime::now() > pair.unwrap().1 {
+        if cache.is_none() || SystemTime::now() > cache.as_ref().unwrap().expiration {
             // refresh permissions
             let member = guild.member(&ctx, &session.user.id).await.map_err(|_| AuthQueryError::CacheError)?;
             let mut upgraded_roles = Vec::new();
@@ -206,18 +215,25 @@ impl AuthModule {
                 }
                 g.owner_id
             }).ok_or(AuthQueryError::CacheError)?;
-            let data = ctx.permissions.check(permission, guild, &owner, &session.user.id, &upgraded_roles).await;
-            let pair = (data.is_none(), SystemTime::now() + StdDuration::from_secs(60 * 15));
-            session.user.guilds.write().await.get_mut(guild).ok_or(AuthQueryError::CacheError)?.insert(*permission, pair);
-            if data.is_some() {
-                Err(AuthQueryError::MissingPermission)
+            let viewer_permission = ctx.permissions.check(&PermissionType::WebViewer, guild, &owner, &session.user.id, &upgraded_roles).await.is_some();
+            let editor_permission = ctx.permissions.check(&PermissionType::WebEditor, guild, &owner, &session.user.id, &upgraded_roles).await.is_some();
+            let resolved_level = if editor_permission { WebPermissionLevel::Editor }
+                                         else if viewer_permission { WebPermissionLevel::Viewer }
+                                         else { WebPermissionLevel::None };
+            let data = GuildPermissionCache {
+                level: resolved_level.clone(),
+                expiration: SystemTime::now() + StdDuration::from_secs(60 * 15),
+            };
+            session.user.guilds.write().await.insert(*guild, Some(data));
+            if &resolved_level >= level {
+                Ok(resolved_level)
             } else {
-                Ok(session)
+                Err(AuthQueryError::MissingPermission)
             }
         } else {
-            let (has, _) = pair.unwrap();
-            if has {
-                Ok(session)
+            let cache = cache.unwrap();
+            if &cache.level >= level {
+                Ok(cache.level)
             } else {
                 Err(AuthQueryError::MissingPermission)
             }
