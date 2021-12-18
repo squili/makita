@@ -107,6 +107,10 @@ impl PreviewsModule {
             Some(guild) => format!("[{}]{} ", guild.name, (guild.id, message.channel_id).link()),
             None => "".to_string(),
         };
+        let link_foreign_or_you = match maybe_link_foreign.len() {
+            0 => "This server ",
+            _ => maybe_link_foreign.as_str(),
+        };
 
         let mut embed = CreateEmbed::default();
         embed.description("\u{200B}"); // make sure there's a description field
@@ -118,8 +122,7 @@ impl PreviewsModule {
             return embed;
         }
 
-        if filter_kind!(Unknown, GuildInviteReminder,
-            GuildDiscoveryRequalified, GuildDiscoveryGracePeriodInitialWarning,
+        if filter_kind!(Unknown, GuildInviteReminder, GuildDiscoveryGracePeriodInitialWarning,
             GuildDiscoveryGracePeriodFinalWarning, ThreadStarterMessage, ContextMenuCommand) {
             UserId(719046554744520754).create_dm_channel(&ctx).await.unwrap()
                 .say(&ctx, format!("type {:?} spotted: {}", message.kind, message.link())).await.unwrap();
@@ -178,6 +181,12 @@ impl PreviewsModule {
             }));
         }
 
+        // discovery enrollment
+        if filter_kind!(GuildDiscoveryDisqualified, GuildDiscoveryRequalified) {
+            embed.description(format!("{}{}qualified from discovery.", link_foreign_or_you,
+                if message.kind == MessageType::GuildDiscoveryDisqualified { "dis" } else { "re" }));
+        }
+
         // single-match messages
         match message.kind {
             MessageType::PinsAdd => {
@@ -211,9 +220,6 @@ impl PreviewsModule {
                         },
                         None => format!("#{}", message.content)
                     }, maybe_link_foreign, message.channel_id.mention()));
-            }
-            MessageType::GuildDiscoveryDisqualified => {
-                embed.description("You got disqualified from discovery! What a loser!");
             }
             _ => {}
         };
