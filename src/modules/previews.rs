@@ -104,7 +104,7 @@ impl PreviewsModule {
 
         let flags = message.flags.unwrap_or_else(MessageFlags::empty);
         let maybe_link_foreign = match foreign {
-            Some(guild) => format!("[{}]{} ", guild.name, (guild.id, message.channel_id).link()),
+            Some(guild) => format!("[{}]({}) ", guild.name, (guild.id, message.channel_id).link()),
             None => "".to_string(),
         };
         let link_foreign_or_you = match maybe_link_foreign.len() {
@@ -183,7 +183,7 @@ impl PreviewsModule {
 
         // discovery enrollment
         if filter_kind!(GuildDiscoveryDisqualified, GuildDiscoveryRequalified) {
-            embed.description(format!("{}{}qualified from discovery.", link_foreign_or_you,
+            embed.description(format!("{}has been {}qualified from discovery.", link_foreign_or_you,
                 if message.kind == MessageType::GuildDiscoveryDisqualified { "dis" } else { "re" }));
         }
 
