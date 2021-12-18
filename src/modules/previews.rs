@@ -104,7 +104,20 @@ impl PreviewsModule {
 
         let flags = message.flags.unwrap_or_else(MessageFlags::empty);
         let maybe_link_foreign = match foreign {
-            Some(guild) => format!("[{}]({}) ", guild.name, (guild.id, message.channel_id).link()),
+            Some(guild) =>
+                // we try our best to find a channel that everyone can access
+                format!("[{}]({}) ", guild.name, (guild.id, guild.rules_channel_id.unwrap_or_else(|| {
+                    guild.channels.values().find(|channel| {
+                        match channel {
+                            Channel::Guild(channel) => {
+                                channel.permission_overwrites.iter().filter(|overwrite| {
+                                    overwrite.deny.read_messages()
+                                }).count() == 0
+                            }
+                            _ => false,
+                        }
+                    }).map(|c| c.id()).unwrap_or_else(|| message.channel_id)
+                })).link()),
             None => "".to_string(),
         };
         let link_foreign_or_you = match maybe_link_foreign.len() {
@@ -159,7 +172,7 @@ impl PreviewsModule {
                 .field("Author", message.author.mention(), true);
             match &foreign {
                 Some(guild) => {
-                    embed.field("Guild", guild.name.clone(), true);
+                    embed.field("Guild", maybe_link_foreign.clone(), true);
                 }
                 None => {}
             }
@@ -183,8 +196,9 @@ impl PreviewsModule {
 
         // discovery enrollment
         if filter_kind!(GuildDiscoveryDisqualified, GuildDiscoveryRequalified) {
-            embed.description(format!("{}has been {}qualified from discovery.", link_foreign_or_you,
-                if message.kind == MessageType::GuildDiscoveryDisqualified { "dis" } else { "re" }));
+            embed.description(format!("{}has been {}qualified {} discovery.", link_foreign_or_you,
+                if message.kind == MessageType::GuildDiscoveryDisqualified { "dis" } else { "re" },
+                if message.kind == MessageType::GuildDiscoveryDisqualified { "from" } else { "for" }));
         }
 
         // single-match messages
@@ -559,7 +573,7 @@ impl PreviewsModule {
     pub async fn previews_archive(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
         defer_command(&ctx, interaction).await?;
         let guild_id = interaction.guild_id.unwrap();
-        self.update_archive(&ctx.pool, args.get_channel("target").ok().map(|c| c.id), guild_id.clone()).await?;
+        self.update_archive(&ctx.pool, args.get_channel("target").ok().map(|c| c.id), guild_id).await?;
 
         FollowupBuilder::new()
             .description("Success")
