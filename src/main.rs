@@ -111,6 +111,7 @@ async fn start() -> Result<()> {
         Algorithm::new_ecdsa_pem_signer(AlgorithmID::ES256, &fs::read("public.pem")?)?,
         Algorithm::new_ecdsa_pem_verifier(AlgorithmID::ES256, &fs::read("private.pem")?)?,
     ));
+    let utils_module = Arc::new(modules::UtilsModule::new());
 
     let handler = Handler {
         pool: pool.clone(),
@@ -119,7 +120,8 @@ async fn start() -> Result<()> {
         updates: updates_module.clone(),
         permissions: permissions_module.clone(),
         previews: previews_module.clone(),
-        auth: auth_module.clone()
+        auth: auth_module.clone(),
+        utils: utils_module,
     };
 
     info!("initializing modules");

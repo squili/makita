@@ -16,7 +16,7 @@ use std::str::FromStr;
 use serenity::builder::CreateEmbed;
 use serenity::http::AttachmentType;
 use serenity::model::guild::Guild;
-use crate::utils::{remove_indexes, SqlId, default_arg, FollowupBuilder, BotContext, Link, defer_command};
+use crate::utils::{remove_indexes, SqlId, default_arg, FollowupBuilder, BotContext, Link, defer_command, link_guild};
 use sqlx::postgres::PgRow;
 use crate::decode::SlashMap;
 use serenity::model::interactions::application_command::ApplicationCommandInteraction;
@@ -104,20 +104,7 @@ impl PreviewsModule {
 
         let flags = message.flags.unwrap_or_else(MessageFlags::empty);
         let maybe_link_foreign = match foreign {
-            Some(guild) =>
-                // we try our best to find a channel that everyone can access
-                format!("[{}]({}) ", guild.name, (guild.id, guild.rules_channel_id.unwrap_or_else(|| {
-                    guild.channels.values().find(|channel| {
-                        match channel {
-                            Channel::Guild(channel) => {
-                                channel.permission_overwrites.iter().filter(|overwrite| {
-                                    overwrite.deny.read_messages()
-                                }).count() == 0
-                            }
-                            _ => false,
-                        }
-                    }).map(|c| c.id()).unwrap_or_else(|| message.channel_id)
-                })).link()),
+            Some(guild) => format!(" {}", link_guild(guild, &message.channel_id)),
             None => "".to_string(),
         };
         let link_foreign_or_you = match maybe_link_foreign.len() {
@@ -170,11 +157,8 @@ impl PreviewsModule {
                 })
                 .field("Channel", message.channel_id.mention(), true)
                 .field("Author", message.author.mention(), true);
-            match &foreign {
-                Some(guild) => {
-                    embed.field("Guild", maybe_link_foreign.clone(), true);
-                }
-                None => {}
+            if matches!(foreign, Some(_)) {
+                embed.field("Guild", maybe_link_foreign.clone(), true);
             }
         }
 

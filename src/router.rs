@@ -104,6 +104,7 @@ pub async fn chat_input_router(handler: &Handler, ctx: &BotContext, interaction:
         "previews list" => ensure_permission!(ManagePreviews, handler.previews.previews_list(ctx, interaction).await),
         "previews archive" => ensure_permission!(ManagePreviews, handler.previews.previews_archive(ctx, interaction, args).await),
         "previews view" => handler.previews.previews_view(ctx, interaction, args).await,
+        "timeout" => ensure_permission!(Timeout, handler.utils.timeout_command(ctx, interaction, args).await),
         _ => Ok(())
     }
 }

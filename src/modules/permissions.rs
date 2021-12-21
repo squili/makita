@@ -67,7 +67,8 @@ impl_permission_type!(
     WebEditor, "WebEditor", "Web Editor", "Edit access to the website",
     ManagePermissions, "ManagePermissions", "Manage Permissions", "Manage bot permissions",
     ManagePreviews, "ManagePreviews", "Manage Previews", "Manage preview configuration",
-    CreateArchive, "CreateArchive", "Create Archive", "Create entries in the archive channel"
+    CreateArchive, "CreateArchive", "Create Archive", "Create entries in the archive channel",
+    Timeout, "Timeout", "Timeout", "Timeout users"
 );
 
 pub struct PermissionData {
@@ -89,6 +90,7 @@ impl PermissionData {
             PermissionType::ManagePermissions => Self::new(&DiscordPermissions::ADMINISTRATOR),
             PermissionType::ManagePreviews => Self::new(&DiscordPermissions::MANAGE_GUILD),
             PermissionType::CreateArchive => Self::new(&DiscordPermissions::MANAGE_MESSAGES),
+            PermissionType::Timeout => Self::new(&DiscordPermissions::MODERATE_MEMBERS),
         }
     }
 }
@@ -108,6 +110,7 @@ impl PermissionEntry {
         entry.data.insert(PermissionType::ManagePermissions, PermissionData::default(&PermissionType::ManagePermissions));
         entry.data.insert(PermissionType::ManagePreviews, PermissionData::default(&PermissionType::ManagePreviews));
         entry.data.insert(PermissionType::CreateArchive, PermissionData::default(&PermissionType::CreateArchive));
+        entry.data.insert(PermissionType::Timeout, PermissionData::default(&PermissionType::Timeout));
         entry
     }
 

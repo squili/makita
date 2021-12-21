@@ -3,17 +3,20 @@
 // You should have received a copy of the license along with this program
 // If not, see <https://www.gnu.org/licenses/#AGPL>
 
+use std::collections::HashMap;
+use std::str::FromStr;
 use crate::prelude::*;
 use std::time::{SystemTime, UNIX_EPOCH};
 use anyhow::Result;
-use chrono::NaiveDateTime;
+use chrono::{Duration, NaiveDateTime};
 use serde::Deserializer;
 use serenity::cache::Cache;
 use serenity::CacheAndHttp;
 use serenity::client::Context;
 use serenity::http::{CacheHttp, Http};
-use serenity::model::channel::MessageReference;
-use serenity::model::id::{ChannelId, GuildId};
+use serenity::model::channel::{Channel, MessageReference};
+use serenity::model::guild::{Guild, Role};
+use serenity::model::id::{ChannelId, GuildId, RoleId};
 use serenity::model::interactions::application_command::ApplicationCommandInteraction;
 use serenity::model::interactions::{InteractionApplicationCommandCallbackDataFlags, InteractionResponseType};
 use serenity::model::interactions::message_component::{ButtonStyle, MessageComponentInteraction};
@@ -214,6 +217,11 @@ impl FollowupBuilder {
         self
     }
 
+    pub fn set_ephemeral(mut self, value: bool) -> Self {
+        self.ephemeral = value;
+        self
+    }
+
     builder_entry!(String, title);
     builder_entry!(String, description);
 }
@@ -307,4 +315,49 @@ impl<'de, T> Deserialize<'de> for OptionalOption<T>
             Err(_) => OptionalOption::Missing,
         })
     }
+}
+
+pub fn highest_role(cached: &HashMap<RoleId, Role>, roles: &[RoleId]) -> i64 {
+    roles.iter().map(|r| {
+        cached.get(r).map(|r| {
+            r.position
+        }).unwrap_or(0)
+    }).max().unwrap_or(0)
+}
+
+pub fn parse_duration(from: &str) -> Option<Duration> {
+    let mut duration = Duration::seconds(0);
+    let mut num_array = String::new();
+    for char in from.chars() {
+        if ('0'..='9').contains(&char) {
+            num_array.push(char)
+        } else {
+            let quantity = i64::from_str(&num_array).ok()?;
+            match char {
+                'd' => duration = duration + Duration::days(quantity),
+                'h' => duration = duration + Duration::hours(quantity),
+                'm' => duration = duration + Duration::minutes(quantity),
+                's' => duration = duration + Duration::seconds(quantity),
+                _ => return None
+            }
+        }
+    }
+
+    Some(duration)
+}
+
+// we try our best to find a channel that everyone can see
+pub fn link_guild(guild: &Guild, hint: &ChannelId) -> String {
+    format!("[{}]({})", guild.name, (guild.id, guild.rules_channel_id.unwrap_or_else(|| {
+        guild.channels.values().find(|channel| {
+            match channel {
+                Channel::Guild(channel) => {
+                    channel.permission_overwrites.iter().filter(|overwrite| {
+                        overwrite.deny.read_messages()
+                    }).count() == 0
+                }
+                _ => false,
+            }
+        }).map(|c| c.id()).unwrap_or_else(|| *hint)
+    })).link())
 }

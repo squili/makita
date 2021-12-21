@@ -16,7 +16,7 @@ use serenity::model::interactions::Interaction;
 use serenity::model::interactions::application_command::ApplicationCommandType;
 use crate::router;
 use serenity::utils::Color;
-use crate::modules::{AuthModule, PermissionsModule, PreviewsModule, UpdatesModule};
+use crate::modules::{AuthModule, PermissionsModule, PreviewsModule, UpdatesModule, UtilsModule};
 
 pub struct Handler {
     pub pool: Pool<Postgres>,
@@ -26,6 +26,7 @@ pub struct Handler {
     pub permissions: Arc<PermissionsModule>,
     pub previews: Arc<PreviewsModule>,
     pub auth: Arc<AuthModule>,
+    pub utils: Arc<UtilsModule>,
 }
 
 pub macro handler_log {
@@ -94,7 +95,8 @@ impl EventHandler for Handler {
                             "Command Error Response",
                             command.create_followup_message(&b_ctx, |f|
                                 f.create_embed(|e|
-                                    e.description(format!("{}{}", if err.is::<BotError>() {""} else {"Internal error: "}, err)).color(Color::RED))).await)
+                                    e.description(format!("{}{}", if err.is::<BotError>() {""} else {"Internal error: "}, err)).color(Color::RED)
+                                )).await)
                 }
             }
             Interaction::MessageComponent(component) => {
@@ -107,10 +109,9 @@ impl EventHandler for Handler {
                         handler_log!(
                             "Message Component Error Response",
                             component.create_followup_message(&b_ctx, |r|
-                                r.content("").create_embed(|e|
+                                r.create_embed(|e|
                                     e.description(format!("{}{}", if err.is::<BotError>() {""} else {"Internal error: "}, err)).color(Color::RED)
-                                )
-                            ).await
+                                )).await
                         )
                 }
             },

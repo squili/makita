@@ -220,6 +220,46 @@
     ]
   },
   {
+    type: 1,
+    name: 'timeout',
+    description: 'Put naughty chatters into timeout',
+    options: [
+      {
+        type: 6,
+        name: 'target',
+        description: 'The user you want to bonk',
+        required: true
+      },
+      {
+        type: 3,
+        name: 'duration',
+        description: 'Duration in the format of 1d2h3m4s. Can be at most 28 days',
+        required: true
+      },
+      {
+        type: 3,
+        name: 'reason',
+        description: 'You know what this field is for',
+        required: true
+      },
+      {
+        type: 5,
+        name: 'shame',
+        description: 'Sends a message in this channel about the timeout - default true'
+      },
+      {
+        type: 5,
+        name: 'dm',
+        description: "Sends a message to the user's DMs about the timeout - default true"
+      },
+      {
+        type: 5,
+        name: 'anon',
+        description: 'Hides moderator name from mute messages - default false'
+      }
+    ]
+  },
+  {
     type: 3,
     name: 'Archive',
   },

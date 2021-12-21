@@ -14,12 +14,8 @@ resolver = "2"
 [dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "parking_lot"] }
 anyhow = "1"
-# we're using the next branch here. no, it's not because i just love their amazing new changes. no, it's not because
-# i can't stand not running on the bleeding edge. it's because an edge case being fixed could break other stuff
-# in an edge case. fml.
-serenity = { git = "https://github.com/serenity-rs/serenity.git", rev = "f349db848c16ec0b5f48afd63121573de22d800e", default-features = false, features = ["client", "http", "model", "unstable_discord_api", "cache", "rustls_backend", "gateway"] }
-#serenity = { version = "0.10.9", default-features = false, features = ["client", "http", "model", "unstable_discord_api", "cache", "rustls_backend", "gateway"] }
-#serenity-slash-decode = "0.1.2"
+# this is actually a fork of serenity because... well it's a long story
+serenity = { git = "https://github.com/squili/serenity-makita.git", rev = "f600131f297c4a1684f06b043625e7e634c44dc2", default-features = false, features = ["client", "http", "model", "unstable_discord_api", "cache", "rustls_backend", "gateway"] }
 log = "0.4"
 log4rs = { version = "1", default-features = false, features = ["console_appender", "rolling_file_appender",
     "pattern_encoder", "compound_policy", "size_trigger", "fixed_window_roller", "background_rotation"] }

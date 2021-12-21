@@ -15,6 +15,7 @@ use serenity::model::misc::{Mention, Mentionable as SerenityMentionable};
 use serenity::model::user::User;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
+use serenity::model::id::UserId;
 
 #[derive(Debug)]
 pub enum Error {
@@ -87,6 +88,13 @@ impl UserOrMember {
         match self {
             UserOrMember::User(_) => None,
             UserOrMember::Member(_, m) => Some(m),
+        }
+    }
+    
+    pub fn id(&self) -> &UserId {
+        match self {
+            UserOrMember::User(u) => &u.id,
+            UserOrMember::Member(u, _) => &u.id,
         }
     }
 }
