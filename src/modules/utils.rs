@@ -18,12 +18,21 @@ impl UtilsModule {
     pub fn new() -> Self { Self {} }
 
     pub async fn timeout_command(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
-        let duration = parse_duration(&args.get_string("duration")?).ok_or(BotError::CacheMissing)?;
-        let until = Utc::now() + duration;
         let reason = args.get_string("reason")?;
         let shame = args.get_boolean("shame").unwrap_or(true);
         let dm = args.get_boolean("dm").unwrap_or(true);
         let anon = args.get_boolean("anon").unwrap_or(false);
+        let duration = match parse_duration(&args.get_string("duration")?) {
+            Some(s) => s,
+            None => {
+                return FollowupBuilder::new()
+                    .description("Duration is malformed")
+                    .set_ephemeral(anon)
+                    .build_command_response(&ctx, interaction)
+                    .await;
+            }
+        };
+        let until = Utc::now() + duration;
 
         let target = interaction.guild_id.unwrap().member(&ctx, args.get_user("target")?.id()).await?;
 
@@ -38,7 +47,7 @@ impl UtilsModule {
             return FollowupBuilder::new()
                 .description("Duration is too long")
                 .set_ephemeral(anon)
-                .build_command_response(&ctx, interaction)
+                .build_command_somehow(&ctx, interaction, shame && !anon)
                 .await;
         }
 
@@ -49,7 +58,7 @@ impl UtilsModule {
             return FollowupBuilder::new()
                 .description("Can't time out owner")
                 .set_ephemeral(anon)
-                .build_command_response(&ctx, interaction).await;
+                .build_command_somehow(&ctx, interaction, shame && !anon).await;
         }
 
         let roles = ctx.cache.guild_roles(interaction.guild_id.unwrap()).ok_or(BotError::CacheMissing)?;
@@ -64,7 +73,7 @@ impl UtilsModule {
             return FollowupBuilder::new()
                 .description(format!("{} has a role above me", target.mention()))
                 .set_ephemeral(anon)
-                .build_command_response(&ctx, interaction)
+                .build_command_somehow(&ctx, interaction, shame && !anon)
                 .await;
         }
 

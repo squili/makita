@@ -113,6 +113,14 @@ impl FollowupBuilder {
         Default::default()
     }
 
+    pub async fn build_command_somehow<T: AsRef<Http>>(self, http: T, interaction: &ApplicationCommandInteraction, followup: bool) -> Result<()> {
+        if followup {
+            self.build_command_followup(http, interaction).await
+        } else {
+            self.build_command_response(http, interaction).await
+        }
+    }
+
     pub async fn build_command_response<T: AsRef<Http>>(self, http: T, interaction: &ApplicationCommandInteraction) -> Result<()> {
         interaction.create_interaction_response(&http, |r| {
             r
