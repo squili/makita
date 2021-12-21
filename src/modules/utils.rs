@@ -34,6 +34,14 @@ impl UtilsModule {
         // TODO: break out rest of this functionality into a generic function that can be used by other modules
 
         // check if we can actually do what they are asking from us
+        if duration > Duration::days(28) {
+            return FollowupBuilder::new()
+                .description("Duration is too long")
+                .set_ephemeral(anon)
+                .build_command_response(&ctx, interaction)
+                .await;
+        }
+
         let guild_owner = ctx.cache.guild_field(&interaction.guild_id.unwrap(), |guild| {
             guild.owner_id
         }).ok_or(BotError::CacheMissing)?;
