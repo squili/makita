@@ -272,7 +272,7 @@ impl PreviewsModule {
                                     Some(s) => s,
                                     None => return Err(Error::new(BotError::CacheMissing))
                                 }
-                            }, &member)?.read_messages() {
+                            }, &member)?.read_message_history() {
                             return Err(Error::new(BotError::Generic(s!("You do not have permission to view this message"))));
                         }
                         // get message
@@ -280,8 +280,7 @@ impl PreviewsModule {
                             .map_err(|_| Error::new(BotError::NotFound("Message".to_string())))?;
                         message.guild_id = Some(guild.id);
 
-                        // inner /previews view target: https://canary.discord.com/channels/891587287723409428/894377090009403442/895877429820792852
-
+                        // inner
                         let embed = Self::derive_embed(ctx, &message,
                             from_guild.and_then(|s| if s == guild.id { None } else { Some(&guild) })).await;
 
