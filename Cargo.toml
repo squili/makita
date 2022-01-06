@@ -15,7 +15,7 @@ resolver = "2"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "parking_lot"] }
 anyhow = "1"
 # this is actually a fork of serenity because... well it's a long story
-serenity = { git = "https://github.com/squili/serenity-makita.git", rev = "f600131f297c4a1684f06b043625e7e634c44dc2", default-features = false, features = ["client", "http", "model", "unstable_discord_api", "cache", "rustls_backend", "gateway"] }
+serenity = { git = "https://github.com/squili/serenity-makita.git", rev = "20c9d48947423db9ab8a132761a015a7271fae8f", default-features = false, features = ["client", "http", "model", "unstable_discord_api", "cache", "rustls_backend", "gateway"] }
 log = "0.4"
 log4rs = { version = "1", default-features = false, features = ["console_appender", "rolling_file_appender",
     "pattern_encoder", "compound_policy", "size_trigger", "fixed_window_roller", "background_rotation"] }
