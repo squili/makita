@@ -18,7 +18,7 @@ use serenity::model::id::{GuildId, UserId};
 use anyhow::Error as AnyhowError;
 use axum::Json;
 use serde_json::{Map, Value};
-use crate::modules::{Session, WebPermissionLevel};
+use crate::modules::{AdminPermissionData, Session, WebPermissionLevel};
 
 static REQWEST_CLIENT: SyncLazy<reqwest::Client> = SyncLazy::new(|| {
     reqwest::Client::builder()
@@ -125,7 +125,8 @@ struct SessionInfoResponse {
     id: UserId,
     name: String,
     icon: String,
-    guilds: Vec<SessionInfoResponseInner>
+    guilds: Vec<SessionInfoResponseInner>,
+    admin: Option<AdminPermissionData>,
 }
 
 #[derive(Serialize)]
@@ -163,7 +164,8 @@ pub async fn session(Extension(ctx): Extension<Arc<ApiContext>>, headers: Header
         id: session.user.id,
         icon: user.avatar_url().unwrap_or_else(|| user.default_avatar_url()),
         name: user.name,
-        guilds
+        guilds,
+        admin: ctx.permissions.get_admin_permissions(&user.id).await
     }))
 }
 

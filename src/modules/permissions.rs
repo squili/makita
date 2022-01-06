@@ -71,13 +71,13 @@ impl_permission_type!(
     Timeout, "Timeout", "Timeout", "Timeout users"
 );
 
-pub struct PermissionData {
+pub struct GuildPermissionData {
     discord: DiscordPermissions,
     roles: Vec<RoleId>,
     users: Vec<UserId>,
 }
 
-impl PermissionData {
+impl GuildPermissionData {
     fn new(permissions: &DiscordPermissions) -> Self {
         Self { discord: *permissions, roles: Vec::new(), users: Vec::new() }
     }
@@ -96,35 +96,35 @@ impl PermissionData {
 }
 
 #[derive(Default)]
-pub struct PermissionEntry {
-    data: HashMap<PermissionType, PermissionData>,
+pub struct GuildPermissionEntry {
+    data: HashMap<PermissionType, GuildPermissionData>,
     guild_id: GuildId,
 }
 
-impl PermissionEntry {
+impl GuildPermissionEntry {
     fn new(guild_id: &GuildId) -> Self {
         let mut entry = Self { data: Default::default(), guild_id: *guild_id };
-        entry.data.insert(PermissionType::Administrator, PermissionData::default(&PermissionType::Administrator));
-        entry.data.insert(PermissionType::WebViewer, PermissionData::default(&PermissionType::WebViewer));
-        entry.data.insert(PermissionType::WebEditor, PermissionData::default(&PermissionType::WebEditor));
-        entry.data.insert(PermissionType::ManagePermissions, PermissionData::default(&PermissionType::ManagePermissions));
-        entry.data.insert(PermissionType::ManagePreviews, PermissionData::default(&PermissionType::ManagePreviews));
-        entry.data.insert(PermissionType::CreateArchive, PermissionData::default(&PermissionType::CreateArchive));
-        entry.data.insert(PermissionType::Timeout, PermissionData::default(&PermissionType::Timeout));
+        entry.data.insert(PermissionType::Administrator, GuildPermissionData::default(&PermissionType::Administrator));
+        entry.data.insert(PermissionType::WebViewer, GuildPermissionData::default(&PermissionType::WebViewer));
+        entry.data.insert(PermissionType::WebEditor, GuildPermissionData::default(&PermissionType::WebEditor));
+        entry.data.insert(PermissionType::ManagePermissions, GuildPermissionData::default(&PermissionType::ManagePermissions));
+        entry.data.insert(PermissionType::ManagePreviews, GuildPermissionData::default(&PermissionType::ManagePreviews));
+        entry.data.insert(PermissionType::CreateArchive, GuildPermissionData::default(&PermissionType::CreateArchive));
+        entry.data.insert(PermissionType::Timeout, GuildPermissionData::default(&PermissionType::Timeout));
         entry
     }
 
-    pub fn get(&self, ty: &PermissionType) -> &PermissionData {
+    pub fn get(&self, ty: &PermissionType) -> &GuildPermissionData {
         self.data.get(ty).unwrap()
     }
 
     // Safety: Must update database yourself
-    unsafe fn get_mut(&mut self, ty: &PermissionType) -> &mut PermissionData {
+    unsafe fn get_mut(&mut self, ty: &PermissionType) -> &mut GuildPermissionData {
         self.data.get_mut(ty).unwrap()
     }
 
     pub async fn set<F>(&mut self, ty: &PermissionType, pool: &PgPool, mut func: F) -> Result<()>
-    where F: FnMut(&mut PermissionData) {
+    where F: FnMut(&mut GuildPermissionData) {
         let data = self.data.get_mut(ty).unwrap();
         func(data);
         sqlx::query("insert into Permissions (type, guild_id, overwrites, roles, users) values ($1, $2, $3, $4, $5)\
@@ -140,38 +140,78 @@ impl PermissionEntry {
     }
 }
 
+#[derive(Clone, Serialize)]
+pub struct AdminPermissionData {
+    manage_admins: bool,
+    manage_instance: bool,
+    bypass_permissions: bool,
+}
+
 pub struct PermissionsModule {
-    cache: RwLock<HashMap<GuildId, PermissionEntry>>,
+    guild_cache: RwLock<HashMap<GuildId, GuildPermissionEntry>>,
+    admin_cache: RwLock<HashMap<UserId, AdminPermissionData>>,
     pool: PgPool,
     sudo_enabled: AtomicBool,
-    owner_id: UserId,
+}
+
+macro impl_admin_permissions_getter {
+    ($name: ident, $attribute: ident) => {
+        pub async fn $name(&self, user: &UserId) -> bool {
+            if let Some(data) = self.get_admin_permissions(user).await {
+                data.$attribute
+            } else {
+                false
+            }
+        }
+    }
 }
 
 impl PermissionsModule {
-    pub fn new(owner_id: UserId, pool: PgPool) -> Self {
+    pub fn new(pool: PgPool) -> Self {
         Self {
-            cache: Default::default(),
+            guild_cache: Default::default(),
+            admin_cache: Default::default(),
             sudo_enabled: AtomicBool::new(false),
             pool,
-            owner_id,
         }
     }
 
-    impl_cache_functions!(guild_read, guild_write, write_guild_async, GuildId, PermissionEntry, cache, PermissionEntry::new);
+    impl_cache_functions!(guild_read, guild_write, write_guild_async, GuildId, GuildPermissionEntry, guild_cache, GuildPermissionEntry::new);
+    impl_admin_permissions_getter!(get_admin_manage_admins, manage_admins);
+    impl_admin_permissions_getter!(get_admin_manage_instance, manage_instance);
+    impl_admin_permissions_getter!(get_admin_bypass_permissions, bypass_permissions);
 
-    pub async fn initialize(instance: Arc<Self>, mut task_rx: broadcast::Receiver<TaskMessage>) -> Result<()> {
+    pub async fn initialize(self: Arc<Self>, mut task_rx: broadcast::Receiver<TaskMessage>) -> Result<()> {
+        // guild cache data
         let rows = sqlx::query("select guild_id, type, overwrites, roles, users from Permissions")
-            .fetch_all(&instance.pool)
+            .fetch_all(&self.pool)
             .await?;
 
         for row in rows {
-            instance.guild_write(&row.get::<SqlId<GuildId>, _>("guild_id").0, |entry| {
+            self.guild_write(&row.get::<SqlId<GuildId>, _>("guild_id").0, |entry| {
                 let data = unsafe { entry.get_mut(&row.get::<PermissionType, _>("type")) };
                 data.discord = DiscordPermissions { bits: row.get::<SqlId<u64>, _>("overwrites").0 };
                 data.roles = row.get::<Vec<i64>, _>("roles").iter().map(|s| RoleId(*s as u64)).collect::<Vec<RoleId>>();
                 data.users = row.get::<Vec<i64>, _>("users").iter().map(|s| UserId(*s as u64)).collect::<Vec<UserId>>();
             }).await;
         }
+
+        // admin cache data
+        let rows = sqlx::query("select id, manage_admins, manage_instance, bypass_permissions from Admins")
+            .fetch_all(&self.pool)
+            .await?;
+
+        let mut handle = self.admin_cache.write().await;
+
+        for row in rows {
+            handle.insert(row.get::<SqlId<UserId>, _>("id").0, AdminPermissionData {
+                manage_admins: row.get::<bool, _>("manage_admins"),
+                manage_instance: row.get::<bool, _>("manage_instance"),
+                bypass_permissions: row.get::<bool, _>("bypass_permissions")
+            });
+        }
+
+        drop(handle);
 
         // task event handling
         tokio::spawn(async move {
@@ -180,7 +220,7 @@ impl PermissionsModule {
                 match msg {
                     TaskMessage::Kill => break,
                     TaskMessage::DestroyGuild(g) => {
-                        instance.cache.write().await.remove(&g);
+                        self.guild_cache.write().await.remove(&g);
                     }
                 }
             }
@@ -189,16 +229,24 @@ impl PermissionsModule {
         Ok(())
     }
 
-    fn entry_perms_check(ty: &PermissionType, entry: &PermissionEntry, highest: &DiscordPermissions, user: &UserId, roles: &[Role]) -> bool {
+    fn entry_perms_check(ty: &PermissionType, entry: &GuildPermissionEntry, highest: &DiscordPermissions, user: &UserId, roles: &[Role]) -> bool {
         let data = entry.get(ty);
         (data.discord.bits > 0 && highest.contains(data.discord)) || data.users.contains(user)
             || roles.iter().any(|item| data.roles.contains(&item.id))
     }
 
+    pub async fn get_admin_permissions(&self, user: &UserId) -> Option<AdminPermissionData> {
+        self.admin_cache.read().await.get(user).cloned()
+    }
+
     #[allow(clippy::needless_lifetimes)] // lifetimes not actually needless
     pub async fn check<'a>(&self, ty: &'a PermissionType, guild: &GuildId, owner: &UserId, user: &UserId, roles: &[Role]) -> Option<&'a PermissionType> {
-        if self.sudo_enabled.load(Ordering::Relaxed) && user == &self.owner_id {
-              return None
+        if self.sudo_enabled.load(Ordering::Relaxed) {
+            if let Some(data) = self.get_admin_permissions(user).await {
+                if data.bypass_permissions {
+                    return None
+                }
+            }
         }
 
         if owner == user {
@@ -294,7 +342,7 @@ impl PermissionsModule {
         let permissions = DiscordPermissions::from_bits(args.get_integer("bits")? as u64)
             .ok_or_else(|| BotError::InvalidRequest("Invalid permissions bits".to_string()))?;
 
-        self.write_guild_async(&interaction.guild_id.ok_or(BotError::GuildOnly)?, |entry: &mut PermissionEntry, _| async move {
+        self.write_guild_async(&interaction.guild_id.ok_or(BotError::GuildOnly)?, |entry: &mut GuildPermissionEntry, _| async move {
             entry.set(&ty, &self.pool, |data| {
                 data.discord = permissions;
             }).await
@@ -324,7 +372,7 @@ impl PermissionsModule {
             return Err(Error::new(BotError::Generic("Must specify either `user` or `role`".into())))
         }
 
-        self.write_guild_async(&guild_id, |entry: &mut PermissionEntry, _| async move {
+        self.write_guild_async(&guild_id, |entry: &mut GuildPermissionEntry, _| async move {
             entry.set(&ty, &self.pool, |data| {
                 if let Some(s) = user {
                     data.users.push(s);
@@ -353,7 +401,7 @@ impl PermissionsModule {
 
         let mut user_found = true;
         let mut role_found = true;
-        self.write_guild_async(&interaction.guild_id.ok_or(BotError::GuildOnly)?, |entry: &mut PermissionEntry, _| async move {
+        self.write_guild_async(&interaction.guild_id.ok_or(BotError::GuildOnly)?, |entry: &mut GuildPermissionEntry, _| async move {
             entry.set(&ty, &self.pool, |data| {
                 if let Some(s) = user {
                     match data.users.binary_search(&s) {

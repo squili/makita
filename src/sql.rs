@@ -38,3 +38,9 @@ impl<T> Type<Postgres> for SqlId<T> where T: From<u64> + Into<u64> {
         <i64 as Type<Postgres>>::type_info()
     }
 }
+
+impl<T> AsRef<T> for SqlId<T> where T: From<u64> + Into<u64> {
+    fn as_ref(&self) -> &T {
+        &self.0
+    }
+}
