@@ -19,6 +19,7 @@ use crate::updates::GitMeta;
 pub mod utils;
 mod auth;
 mod previews;
+mod admin;
 
 pub async fn start(ctx: Arc<ApiContext>) -> Result<(), anyhow::Error> {
     let app = Router::new()
@@ -29,12 +30,14 @@ pub async fn start(ctx: Arc<ApiContext>) -> Result<(), anyhow::Error> {
         .route("/auth/sessions", delete(auth::clear_sessions))
         // .route("/auth/:id/viewer", get(auth::check_viewer))
         // .route("/auth/:id/editor", get(auth::check_editor))
+        .route("/admin/admins", get(admin::get_admins).patch(admin::patch_admins))
+        .route("/admin/update", get(admin::get_update).post(admin::post_update))
         .route("/guilds/:id/previews", get(previews::get_previews).patch(previews::patch_previews))
         .layer(AddExtensionLayer::new(ctx.clone()))
         .layer(CorsLayer::new()
             .allow_origin(any())
             .allow_headers(vec![AUTHORIZATION])
-            .allow_methods(vec![Method::GET, Method::POST])
+            .allow_methods(vec![Method::GET, Method::POST, Method::PATCH])
         );
 
     tokio::spawn(async move {

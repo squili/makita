@@ -105,7 +105,7 @@ async fn start() -> Result<()> {
 
     // define modules outside of handler so we can use it in the api
     let updates_module = Arc::new(modules::UpdatesModule::new(shutdown_tx.clone()));
-    let permissions_module = Arc::new(modules::PermissionsModule::new(pool.clone()));
+    let permissions_module = Arc::new(modules::PermissionsModule::new(UserId(config.owner_id), pool.clone()));
     let previews_module = Arc::new(modules::PreviewsModule::new()?);
     let auth_module = Arc::new(modules::AuthModule::new(pool.clone(),
         Algorithm::new_ecdsa_pem_signer(AlgorithmID::ES256, &fs::read("public.pem")?)?,

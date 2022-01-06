@@ -6,7 +6,7 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 use axum::extract::{Extension, Path};
-use axum::http::HeaderMap;
+use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
 use axum::response::IntoResponse;
 use serenity::model::id::{ChannelId, GuildId};
@@ -96,5 +96,5 @@ pub async fn patch_previews(Extension(ctx): Extension<Arc<ApiContext>>, Path(gui
         ctx.previews.update_archive(&ctx.pool, inner, guild_id).await?;
     }
 
-    Ok(())
+    Ok(StatusCode::NO_CONTENT)
 }

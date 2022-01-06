@@ -142,14 +142,14 @@ impl GuildPermissionEntry {
 
 #[derive(Clone, Serialize)]
 pub struct AdminPermissionData {
-    manage_admins: bool,
-    manage_instance: bool,
-    bypass_permissions: bool,
+    pub manage_admins: bool,
+    pub manage_instance: bool,
+    pub bypass_permissions: bool,
 }
 
 pub struct PermissionsModule {
     guild_cache: RwLock<HashMap<GuildId, GuildPermissionEntry>>,
-    admin_cache: RwLock<HashMap<UserId, AdminPermissionData>>,
+    pub admin_cache: RwLock<HashMap<UserId, AdminPermissionData>>,
     pool: PgPool,
     sudo_enabled: AtomicBool,
 }
@@ -167,10 +167,16 @@ macro impl_admin_permissions_getter {
 }
 
 impl PermissionsModule {
-    pub fn new(pool: PgPool) -> Self {
+    pub fn new(owner_id: UserId, pool: PgPool) -> Self {
+        let mut admin_cache_inner = HashMap::new();
+        admin_cache_inner.insert(owner_id, AdminPermissionData {
+            manage_admins: true,
+            manage_instance: true,
+            bypass_permissions: true
+        });
         Self {
             guild_cache: Default::default(),
-            admin_cache: Default::default(),
+            admin_cache: RwLock::new(admin_cache_inner),
             sudo_enabled: AtomicBool::new(false),
             pool,
         }

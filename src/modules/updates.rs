@@ -31,13 +31,14 @@ const fn init_git_data() -> Option<GitMeta> {
             option_env!("GIT_REPO"),
         ) {
         (Some(tag), Some(commit), Some(repo)) => Some(GitMeta { tag, commit, repo }),
-        _ => None,
-        // _ => Some(GitMeta { tag: "v0.0.0", commit: "1234567", repo: "squili/makita" }), // kept here for local update testing
+        // _ => None,
+        _ => Some(GitMeta { tag: "v0.0.0", commit: "1234567", repo: "squili/makita" }), // kept here for local update testing
     }
 }
 
 pub static RESTARTING: AtomicBool = AtomicBool::new(false);
 
+#[derive(Serialize)]
 pub struct UpdateAction {
     download_url: String,
     pub old_version: String,
@@ -73,9 +74,19 @@ pub async fn check_update() -> Result<Option<UpdateAction>> {
     }
 }
 
+#[cfg(unix)]
 pub async fn do_update() -> Result<()> {
-    let action = check_update().await?.ok_or_else(|| BotError::Generic("No updates available".to_string()))?;
+    let action = check_update().await?.ok_or_else(|| Error::msg("No updates available".to_string()))?;
+    do_update_from_action(action).await
+}
 
+#[cfg(not(unix))]
+pub async fn do_update() -> Result<()> {
+    Err(Error::msg(s!("Updates not supported on this platform")))
+}
+
+#[cfg(unix)]
+pub async fn do_update_from_action(action: UpdateAction) -> Result<()> {
     let executable = env::current_exe()?.to_str().unwrap().to_string();
     let bytes = reqwest::get(action.download_url).await?.bytes().await?;
     fs::write(executable.to_string() + ".part", bytes).await?;
@@ -87,6 +98,11 @@ pub async fn do_update() -> Result<()> {
     fs::set_permissions(&executable, permissions).await?;
 
     Ok(())
+}
+
+#[cfg(not(unix))]
+pub async fn do_update_from_action() -> Result<()> {
+    Err(Error::msg(s!("Updates not supported on this platform")))
 }
 
 pub struct UpdatesModule {
@@ -131,12 +147,16 @@ impl UpdatesModule {
             .build_command_followup(&ctx.http, interaction)
             .await
     }
-    pub async fn update_command(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
-        defer_command(&ctx, interaction).await?;
-        do_update().await?;
-
+    pub async fn restart(&self) -> Result<()> {
         RESTARTING.store(true, Ordering::SeqCst);
         self.shutdown_tx.send(()).await?;
+        Ok(())
+    }
+    pub async fn update_command(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
+        defer_command(&ctx, interaction).await?;
+
+        do_update().await?;
+        self.restart().await?;
 
         FollowupBuilder::new()
             .description("Update successful, restarting...")
@@ -146,8 +166,8 @@ impl UpdatesModule {
 
     pub async fn restart_command(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
         defer_command(&ctx, interaction).await?;
-        RESTARTING.store(true, Ordering::SeqCst);
-        self.shutdown_tx.send(()).await?;
+
+        self.restart().await?;
 
         FollowupBuilder::new()
             .description("Restarting...")

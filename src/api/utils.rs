@@ -62,8 +62,7 @@ pub fn serialize_response_status<S: Serialize>(from: S, status: StatusCode) -> (
         data: T
     }
 
-    // note that we unwrap all errors here - this should not be an issue, as we
-    // use both the default Serialize implementation and the official Map structure
+    // note that we unwrap all errors here - this should not be an issue, as we use the default Serialize implementation
     let mut headers = HeaderMap::new();
     headers.insert("Content-Type", HeaderValue::from_static("application/json"));
     (status, headers, to_string(&Wrapper { data: from }).unwrap())
