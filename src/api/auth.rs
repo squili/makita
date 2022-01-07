@@ -80,6 +80,8 @@ pub async fn callback(
             // there was an error
             return Err(ApiError::Internal(AnyhowError::msg(match (resp.error, resp.error_description) {
                 (Some(error), Some(description)) => format!("Discord Error: {} - {}", error, description),
+                (Some(error), _) => format!("Discord Error: {}", error),
+                (_, Some(description)) => format!("Discord Error: {}", description),
                 _ => s!("Discord Error: No further info")
             })));
         }
