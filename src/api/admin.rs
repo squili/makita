@@ -123,3 +123,15 @@ pub async fn post_update(Extension(ctx): Extension<Arc<ApiContext>>, headers: He
 
     Ok(StatusCode::NO_CONTENT)
 }
+
+pub async fn restart(Extension(ctx): Extension<Arc<ApiContext>>, headers: HeaderMap) -> Result<impl IntoResponse, ApiError> {
+    let session = check(&ctx, &headers, None, &WebPermissionLevel::None).await?;
+
+    if !ctx.permissions.get_admin_manage_admins(&session.user.id).await {
+        return Err(ApiError::MissingPermission);
+    }
+
+    ctx.updates.restart().await?;
+
+    Ok(StatusCode::NO_CONTENT)
+}

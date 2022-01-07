@@ -7,7 +7,7 @@ pub use crate::prelude::*;
 use axum::extract::Extension;
 use axum::response::IntoResponse;
 use axum::{AddExtensionLayer, Router};
-use axum::routing::{get, delete};
+use axum::routing::{get, delete, post};
 use reqwest::header::AUTHORIZATION;
 use reqwest::Method;
 use tower_http::cors::{any, CorsLayer};
@@ -32,6 +32,7 @@ pub async fn start(ctx: Arc<ApiContext>) -> Result<(), anyhow::Error> {
         // .route("/auth/:id/editor", get(auth::check_editor))
         .route("/admin/admins", get(admin::get_admins).patch(admin::patch_admins))
         .route("/admin/update", get(admin::get_update).post(admin::post_update))
+        .route("/admin/restart", post(admin::restart))
         .route("/guilds/:id/previews", get(previews::get_previews).patch(previews::patch_previews))
         .layer(AddExtensionLayer::new(ctx.clone()))
         .layer(CorsLayer::new()
