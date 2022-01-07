@@ -6,7 +6,7 @@
 use crate::prelude::*;
 use std::borrow::Cow;
 use anyhow::{Error, Result};
-use serenity::model::channel::{Message, GuildChannel, Attachment, MessageType, MessageFlags, Channel};
+use serenity::model::channel::{Message, GuildChannel, Attachment, MessageType, MessageFlags, Channel, AttachmentType};
 use serenity::model::id::{GuildId, ChannelId, MessageId, UserId};
 use sqlx::{PgPool, Row};
 use regex::Regex;
@@ -14,7 +14,6 @@ use tokio::sync::{broadcast, RwLock};
 use std::collections::HashMap;
 use std::str::FromStr;
 use serenity::builder::CreateEmbed;
-use serenity::http::AttachmentType;
 use serenity::model::guild::Guild;
 use crate::utils::{remove_indexes, SqlId, default_arg, FollowupBuilder, BotContext, Link, defer_command, link_guild};
 use sqlx::postgres::PgRow;
