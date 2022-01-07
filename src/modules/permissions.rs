@@ -7,8 +7,7 @@ use crate::prelude::*;
 use anyhow::{Result, Error};
 use serenity::model::Permissions as DiscordPermissions;
 use serenity::model::id::{RoleId, UserId, GuildId};
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::collections::{HashMap, HashSet};
 use tokio::sync::{broadcast, RwLock};
 use sqlx::{PgPool, Row};
 use crate::utils::{SqlId, FollowupBuilder, BotContext, defer_command, defer_component};
@@ -150,12 +149,13 @@ pub struct AdminPermissionData {
 pub struct PermissionsModule {
     guild_cache: RwLock<HashMap<GuildId, GuildPermissionEntry>>,
     pub admin_cache: RwLock<HashMap<UserId, AdminPermissionData>>,
+    pub sudo_users: RwLock<HashSet<UserId>>,
     pool: PgPool,
-    sudo_enabled: AtomicBool,
 }
 
 macro impl_admin_permissions_getter {
     ($name: ident, $attribute: ident) => {
+        #[allow(unused)]
         pub async fn $name(&self, user: &UserId) -> bool {
             if let Some(data) = self.get_admin_permissions(user).await {
                 data.$attribute
@@ -177,7 +177,7 @@ impl PermissionsModule {
         Self {
             guild_cache: Default::default(),
             admin_cache: RwLock::new(admin_cache_inner),
-            sudo_enabled: AtomicBool::new(false),
+            sudo_users: Default::default(),
             pool,
         }
     }
@@ -247,12 +247,8 @@ impl PermissionsModule {
 
     #[allow(clippy::needless_lifetimes)] // lifetimes not actually needless
     pub async fn check<'a>(&self, ty: &'a PermissionType, guild: &GuildId, owner: &UserId, user: &UserId, roles: &[Role]) -> Option<&'a PermissionType> {
-        if self.sudo_enabled.load(Ordering::Relaxed) {
-            if let Some(data) = self.get_admin_permissions(user).await {
-                if data.bypass_permissions {
-                    return None
-                }
-            }
+        if self.sudo_users.read().await.contains(owner) {
+            return None
         }
 
         if owner == user {
@@ -274,11 +270,11 @@ impl PermissionsModule {
 
     pub async fn makita_sudo(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
         defer_command(&ctx, interaction).await?;
-        let sudo_enabled = self.sudo_enabled.load(Ordering::Relaxed);
-        self.sudo_enabled.store(!sudo_enabled, Ordering::Relaxed);
+        // let sudo_enabled = self.sudo_enabled.load(Ordering::Relaxed);
+        // self.sudo_enabled.store(!sudo_enabled, Ordering::Relaxed);
 
         FollowupBuilder::new()
-            .description(format!("Sudo mode set to {}", if !sudo_enabled { "enabled" } else { "disabled" }))
+            .description("sudo command disabled")
             .build_command_followup(&ctx.http, interaction)
             .await
     }

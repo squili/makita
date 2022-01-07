@@ -48,7 +48,7 @@ pub struct PatchAdminsData {
     remove_admins: Option<Vec<UserId>>,
 }
 
-pub async fn patch_admins(Extension(ctx): Extension<Arc<ApiContext>>, Json(data): Json<PatchAdminsData>, headers: HeaderMap) -> Result<impl IntoResponse, ApiError> {
+pub async fn patch_admins(Extension(ctx): Extension<Arc<ApiContext>>, headers: HeaderMap, Json(data): Json<PatchAdminsData>) -> Result<impl IntoResponse, ApiError> {
     let session = check(&ctx, &headers, None, &WebPermissionLevel::None).await?;
 
     if !ctx.permissions.get_admin_manage_admins(&session.user.id).await {
@@ -132,6 +132,38 @@ pub async fn restart(Extension(ctx): Extension<Arc<ApiContext>>, headers: Header
     }
 
     ctx.updates.restart().await?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn get_sudo(Extension(ctx): Extension<Arc<ApiContext>>, headers: HeaderMap) -> Result<impl IntoResponse, ApiError> {
+    let session = check(&ctx, &headers, None, &WebPermissionLevel::None).await?;
+
+    if !ctx.permissions.get_admin_bypass_permissions(&session.user.id).await {
+        return Err(ApiError::MissingPermission);
+    }
+
+    Ok(serialize_response(ctx.permissions.sudo_users.read().await.clone()))
+}
+
+#[derive(Deserialize)]
+pub struct PostSudoData {
+    state: bool,
+}
+
+pub async fn post_sudo(Extension(ctx): Extension<Arc<ApiContext>>, headers: HeaderMap, Json(data): Json<PostSudoData>) -> Result<impl IntoResponse, ApiError> {
+    let session = check(&ctx, &headers, None, &WebPermissionLevel::None).await?;
+
+    if !ctx.permissions.get_admin_bypass_permissions(&session.user.id).await {
+        return Err(ApiError::MissingPermission);
+    }
+
+    let mut handle = ctx.permissions.sudo_users.write().await;
+    match data.state {
+        true => handle.insert(session.user.id),
+        false => handle.remove(&session.user.id),
+    };
+    drop(handle);
 
     Ok(StatusCode::NO_CONTENT)
 }

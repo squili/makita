@@ -33,6 +33,7 @@ pub async fn start(ctx: Arc<ApiContext>) -> Result<(), anyhow::Error> {
         .route("/admin/admins", get(admin::get_admins).patch(admin::patch_admins))
         .route("/admin/update", get(admin::get_update).post(admin::post_update))
         .route("/admin/restart", post(admin::restart))
+        .route("/admin/sudo", get(admin::get_sudo).post(admin::post_sudo))
         .route("/guilds/:id/previews", get(previews::get_previews).patch(previews::patch_previews))
         .layer(AddExtensionLayer::new(ctx.clone()))
         .layer(CorsLayer::new()
