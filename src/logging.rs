@@ -40,7 +40,7 @@ pub fn init(log_level_local: LevelFilter, log_level_global: LevelFilter) -> Resu
                             .build(
                                 "makita.log",
                                 Box::new(CompoundPolicy::new(
-                                    Box::new(SizeTrigger::new(1024 * 1024 * 32)),
+                                    Box::new(SizeTrigger::new(1024 * 1024)),
                                     Box::new(
                                         FixedWindowRoller::builder().build("makita.{}.log", 3)?,
                                     ),
