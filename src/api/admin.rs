@@ -4,17 +4,21 @@
 // If not, see <https://www.gnu.org/licenses/#AGPL>
 
 use std::sync::Arc;
+use axum::body::Bytes;
 use axum::extract::Extension;
 use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
 use axum::response::IntoResponse;
+use hmac::{Hmac, Mac};
+use log::info;
 use crate::api::utils::{api_map, ApiError, serialize_response};
 use crate::ApiContext;
 use serde::{Serialize, Deserialize};
 use serenity::model::id::UserId;
+use sha2::Sha256;
 use crate::api::auth::check;
 use crate::modules::{AdminPermissionData, WebPermissionLevel};
-use crate::updates::{check_update, do_update_from_action};
+use crate::updates::{check_update, do_update_from_action, GIT_META};
 use crate::utils::SqlId;
 
 #[derive(Deserialize, Serialize)]
@@ -118,8 +122,10 @@ pub async fn post_update(Extension(ctx): Extension<Arc<ApiContext>>, headers: He
     }
 
     let action = check_update().await?.ok_or(ApiError::BadRequest("No updates available"))?;
+    info!("update started");
     do_update_from_action(action).await?;
     ctx.updates.restart().await?;
+    info!("restarting");
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -132,6 +138,7 @@ pub async fn restart(Extension(ctx): Extension<Arc<ApiContext>>, headers: Header
     }
 
     ctx.updates.restart().await?;
+    info!("restarting");
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -164,6 +171,57 @@ pub async fn post_sudo(Extension(ctx): Extension<Arc<ApiContext>>, headers: Head
         false => handle.remove(&session.user.id),
     };
     drop(handle);
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+struct GithubHasALargePayloadForWebhooksButWeReallyDontNeedTheEntireThingJustThisOneFieldWhichIsWhyWeDontUseTheOctocrabModelStruct {
+    action: String,
+}
+
+pub async fn github_webhook(Extension(ctx): Extension<Arc<ApiContext>>, headers: HeaderMap, body: Bytes) -> Result<impl IntoResponse, ApiError> {
+    if GIT_META.is_none() {
+        return Err(ApiError::BadRequest("Updates disabled"));
+    }
+
+    // only want to process events of type "workflow_job"
+    if headers
+        .get("X-GitHub-Event")
+        .ok_or(ApiError::BadRequest("Missing event type"))?
+        .to_str()
+        .map_err(|_| ApiError::BadRequest("Invalid event type"))? != "workflow_job" {
+        return Ok(StatusCode::NO_CONTENT);
+    }
+
+    let secret = ctx.config.github_webhook_secret.as_ref().ok_or(ApiError::BadRequest("Github webhooks disabled"))?.as_bytes();
+
+    let mut signature = [0_u8; 32];
+    hex::decode_to_slice(
+        headers
+            .get("X-Hub-Signature-256")
+            .ok_or(ApiError::BadRequest("Missing signature"))?
+            .as_bytes()
+            .split_at(7).1,
+        &mut signature
+    ).map_err(api_map!())?;
+
+    let mut mac = Hmac::<Sha256>::new_from_slice(secret).unwrap();
+    mac.update(&*body);
+    if mac.verify_slice(&signature).is_err() {
+        return Err(ApiError::BadRequest("Invalid signature"));
+    }
+
+    let data: GithubHasALargePayloadForWebhooksButWeReallyDontNeedTheEntireThingJustThisOneFieldWhichIsWhyWeDontUseTheOctocrabModelStruct
+        = serde_json::from_str(&*String::from_utf8_lossy(&*body)).map_err(api_map!())?;
+
+    if data.action == "completed" {
+        let action = check_update().await?.ok_or(ApiError::BadRequest("No updates available"))?;
+        info!("update started");
+        do_update_from_action(action).await?;
+        ctx.updates.restart().await?;
+        info!("restarting");
+    }
 
     Ok(StatusCode::NO_CONTENT)
 }

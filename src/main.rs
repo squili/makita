@@ -49,6 +49,7 @@ use serenity::model::id::{ApplicationId, UserId};
 use tokio::sync::{broadcast, mpsc};
 use crate::modules::updates;
 use crate::modules::updates::RESTARTING;
+use crate::updates::current_version;
 
 fn main() -> Result<()> {
     let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -83,7 +84,7 @@ async fn bootstrap() -> Result<()> {
 async fn start() -> Result<()> {
     logging::init(if cfg!(debug_assertions) { LevelFilter::Debug } else { LevelFilter::Info }, LevelFilter::Warn)?;
 
-    info!("hello world");
+    info!("makita version {}", current_version());
 
     if updates::GIT_META.is_some() {
         info!("checking for updates");

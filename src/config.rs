@@ -20,4 +20,6 @@ pub struct Config {
     pub manager_guild: u64,
     #[serde(default)]
     pub commands_guild: Option<GuildId>,
+    #[serde(default)]
+    pub github_webhook_secret: Option<String>,
 }

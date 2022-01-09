@@ -83,6 +83,7 @@ pub fn init() -> Result<()> {
         owner_id,
         manager_guild,
         commands_guild: None,
+        github_webhook_secret: None,
     };
 
     fs::write("config.ron", ron::ser::to_string_pretty(&config,

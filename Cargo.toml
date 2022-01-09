@@ -27,7 +27,6 @@ regex = "1"
 futures = "0.3"
 clap = "3.0.0-beta.4"
 dialoguer = "0.8"
-ring = { version = "0.16", features = ["std"] }
 reqwest = "0.11.7"
 octocrab = "0.12"
 semver = "1"
@@ -39,6 +38,9 @@ tower-http = { version = "0.1.2", features = ["cors"] }
 jsonwebtokens = "1"
 rcgen = { version = "0.8", features = ["pem"] }
 base64 = "0.13"
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"
 
 [build-dependencies]
 # needed for converting commands.json5
