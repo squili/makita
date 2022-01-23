@@ -260,6 +260,19 @@
     ]
   },
   {
+    type: 1,
+    name: 'untimeout',
+    description: 'Remove timeout from naughty users. Can also be used to fix some client glitches',
+    options: [
+      {
+        type: 6,
+        name: 'target',
+        description: 'The user you want to unbonk',
+        required: true
+      }
+    ]
+  },
+  {
     type: 3,
     name: 'Archive',
   },

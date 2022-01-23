@@ -1915,7 +1915,7 @@ dependencies = [
 [[package]]
 name = "serenity"
 version = "0.10.9"
-source = "git+https://github.com/squili/serenity-makita.git?rev=5f2b7e9d4f18710c22a974550c6b701f85c092dd#5f2b7e9d4f18710c22a974550c6b701f85c092dd"
+source = "git+https://github.com/squili/serenity-makita.git?rev=d2b073b4e4d43598480165d8aca109c900813adc#d2b073b4e4d43598480165d8aca109c900813adc"
 dependencies = [
  "async-trait",
  "async-tungstenite",

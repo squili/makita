@@ -116,4 +116,19 @@ impl UtilsModule {
 
         Ok(())
     }
+
+    pub async fn untimeout_command(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
+        interaction.defer(&ctx).await?;
+
+        let target = interaction.guild_id.unwrap().member(&ctx, args.get_user("target")?.id()).await?;
+
+        target.edit(&ctx, |e| {
+            e.timeout_clear()
+        }).await?;
+
+        FollowupBuilder::new()
+            .description("Success")
+            .build_command_followup(&ctx, interaction)
+            .await
+    }
 }
