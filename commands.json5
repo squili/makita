@@ -78,7 +78,8 @@
               { name: 'Web Editor', value: 'WebEditor' },
               { name: 'Manage Permissions', value: 'ManagePermissions' },
               { name: 'Manage Previews', value: 'ManagePreviews' },
-              { name: 'Create Archive', value: 'CreateArchive' }
+              { name: 'Create Archive', value: 'CreateArchive' },
+              { name: 'Timeout', value: 'Timeout' }
             ]
           },
           {
@@ -105,7 +106,8 @@
               { name: 'Web Editor', value: 'WebEditor' },
               { name: 'Manage Permissions', value: 'ManagePermissions' },
               { name: 'Manage Previews', value: 'ManagePreviews' },
-              { name: 'Create Archive', value: 'CreateArchive' }
+              { name: 'Create Archive', value: 'CreateArchive' },
+              { name: 'Timeout', value: 'Timeout' }
             ]
           },
           {
@@ -136,7 +138,8 @@
               { name: 'Web Editor', value: 'WebEditor' },
               { name: 'Manage Permissions', value: 'ManagePermissions' },
               { name: 'Manage Previews', value: 'ManagePreviews' },
-              { name: 'Create Archive', value: 'CreateArchive' }
+              { name: 'Create Archive', value: 'CreateArchive' },
+              { name: 'Timeout', value: 'Timeout' }
             ]
           },
           {
