@@ -12,10 +12,18 @@ jobs:
       - name: Get tag
         id: tag
         uses: dawidd6/action-get-tag@v1
-      - name: Init Rust
-        run: rustup toolchain install x86_64-unknown-linux-musl
+#      - name: Init Rust
+#        run: rustup target add x86_64-unknown-linux-musl && rustup toolchain install x86_64-unknown-linux-musl
+      - name: Install cross
+        run: cargo install cross
+#      - name: Build
+#        run: cargo build --release
+#        env:
+#          GIT_TAG: ${{ steps.tag.outputs.tag }}
+#          GIT_COMMIT: ${{ github.sha }}
+#          GIT_REPO: ${{ github.repository }}
       - name: Build
-        run: cargo build --release
+        run: cross build --release --target x86_64-unknown-linux-musl
         env:
           GIT_TAG: ${{ steps.tag.outputs.tag }}
           GIT_COMMIT: ${{ github.sha }}
