@@ -23,10 +23,7 @@ jobs:
       - name: Build Musl
         uses: stevenleadbeater/rust-musl-builder@master
         with:
-          args: '/bin/bash -c "export GIT_TAG=${{ steps.tag.outputs.tag }};
-                               export GIT_COMMIT=${{ github.sha }};
-                               export GIT_REPO=${{ github.repository }};
-                               cargo build --release --target=x86_64-unknown-linux-musl"'
+          args: /bin/bash -c "cargo build --release --target=x86_64-unknown-linux-musl"
         env:
           GIT_TAG: ${{ steps.tag.outputs.tag }}
           GIT_COMMIT: ${{ github.sha }}
