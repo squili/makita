@@ -13,7 +13,7 @@ jobs:
         id: tag
         uses: dawidd6/action-get-tag@v1
       - name: Init Rust
-        run: rustup toolchain install stable-x86_64-linux-gnu
+        run: rustup toolchain install stable-unknown-linux-gnu
       - name: Build
         run: cargo build --release
         env:
