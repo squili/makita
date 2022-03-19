@@ -3,8 +3,8 @@
 -- You should have received a copy of the license along with this program
 -- If not, see <https://www.gnu.org/licenses/#AGPL>
 
-drop table BotUsers;
 drop table Sessions;
+drop table BotUsers;
 drop table Admins;
 
 -- remove legacy permissions
