@@ -3,17 +3,27 @@
 // You should have received a copy of the license along with this program
 // If not, see <https://www.gnu.org/licenses/#AGPL>
 
+use crate::invite_url;
 use crate::prelude::*;
+use crate::utils::{defer_command, BotContext};
+use crate::Config;
+use anyhow::Result;
+use axum::body::Bytes;
+use axum::extract::Extension;
+use axum::http::{HeaderMap, StatusCode};
+use axum::response::IntoResponse;
+use axum::routing::post;
+use axum::Router;
+use hmac::Hmac;
+use hmac::Mac;
+use semver::Version;
+use serenity::model::interactions::application_command::ApplicationCommandInteraction;
+use sha2::Sha256;
 use std::env;
 use std::os::unix::fs::PermissionsExt;
 use std::sync::atomic::{AtomicBool, Ordering};
-use anyhow::{Error, Result};
-use semver::Version;
-use serenity::model::interactions::application_command::ApplicationCommandInteraction;
-use tokio::sync::mpsc;
 use tokio::fs;
-use crate::utils::{BotContext, defer_command, FollowupBuilder};
-use crate::macros::invite_url;
+use tokio::sync::mpsc;
 
 #[derive(Serialize)]
 pub struct GitMeta {
@@ -26,13 +36,17 @@ pub static GIT_META: Option<GitMeta> = init_git_data();
 
 const fn init_git_data() -> Option<GitMeta> {
     match (
-            option_env!("GIT_TAG"),
-            option_env!("GIT_COMMIT"),
-            option_env!("GIT_REPO"),
-        ) {
+        option_env!("GIT_TAG"),
+        option_env!("GIT_COMMIT"),
+        option_env!("GIT_REPO"),
+    ) {
         (Some(tag), Some(commit), Some(repo)) => Some(GitMeta { tag, commit, repo }),
-        _ => None,
-        // _ => Some(GitMeta { tag: "v0.0.0", commit: "1234567", repo: "squili/makita" }), // kept here for local update testing
+        // _ => None,
+        _ => Some(GitMeta {
+            tag: "v0.0.0",
+            commit: "1234567",
+            repo: "squili/makita",
+        }), // kept here for local update testing
     }
 }
 
@@ -45,71 +59,132 @@ pub fn current_version() -> &'static str {
 
 pub static RESTARTING: AtomicBool = AtomicBool::new(false);
 
-#[derive(Serialize)]
-pub struct UpdateAction {
-    download_url: String,
-    pub old_version: String,
-    pub new_version: String,
-}
+pub async fn start_update_server(
+    config: Arc<Config>,
+    updates: Arc<UpdatesModule>,
+) -> Result<(), anyhow::Error> {
+    if let Some(addr) = config.host_addr {
+        let app = Router::new()
+            .route("/", post(github_webhook))
+            .layer(Extension(config.clone()))
+            .layer(Extension(updates.clone()));
 
-pub async fn check_update() -> Result<Option<UpdateAction>> {
-    match &GIT_META {
-        None => Err(Error::msg("Local builds cannot be updated")),
-        Some(meta) => {
-            let (owner, repo) = meta.repo.split_once("/").ok_or(BotError::Internal(12))?;
-            let latest = octocrab::instance()
-                .repos(owner, repo)
-                .releases()
-                .get_latest()
-                .await?;
-
-            let local_version = Version::parse(&meta.tag.chars().skip(1).collect::<String>())?;
-            let remote_version = Version::parse(&latest.tag_name.chars().skip(1).collect::<String>())?;
-
-            if remote_version > local_version {
-                let asset_url = latest.assets.into_iter().find(|s| s.name == "makita")
-                    .ok_or_else(|| BotError::Generic("Release assets missing".to_string()))?.browser_download_url;
-                Ok(Some(UpdateAction {
-                    download_url: asset_url.to_string(),
-                    old_version: meta.tag.to_string(),
-                    new_version: latest.tag_name,
-                }))
-            } else {
-                Ok(None)
-            }
-        }
+        tokio::spawn(async move {
+            axum::Server::bind(&addr)
+                .serve(app.into_make_service())
+                .await
+                .unwrap();
+        });
     }
-}
-
-#[cfg(unix)]
-pub async fn do_update() -> Result<()> {
-    let action = check_update().await?.ok_or_else(|| Error::msg("No updates available".to_string()))?;
-    do_update_from_action(action).await
-}
-
-#[cfg(not(unix))]
-pub async fn do_update() -> Result<()> {
-    Err(Error::msg(s!("Updates not supported on this platform")))
-}
-
-#[cfg(unix)]
-pub async fn do_update_from_action(action: UpdateAction) -> Result<()> {
-    let executable = env::current_exe()?.to_str().unwrap().to_string();
-    let bytes = reqwest::get(action.download_url).await?.bytes().await?;
-    fs::write(executable.to_string() + ".part", bytes).await?;
-    fs::rename(&executable, executable.to_string() + ".old").await?;
-    fs::rename(executable.to_string() + ".part", &executable).await?;
-
-    let mut permissions = fs::metadata(&executable).await?.permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(&executable, permissions).await?;
 
     Ok(())
 }
 
-#[cfg(not(unix))]
-pub async fn do_update_from_action() -> Result<()> {
-    Err(Error::msg(s!("Updates not supported on this platform")))
+#[derive(Deserialize)]
+struct GithubPayload {
+    action: String,
+}
+
+async fn github_webhook(
+    Extension(config): Extension<Arc<Config>>,
+    Extension(updates): Extension<Arc<UpdatesModule>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<impl IntoResponse, impl IntoResponse> {
+    let meta = GIT_META
+        .as_ref()
+        .ok_or((StatusCode::FORBIDDEN, "Updates disabled"))?;
+
+    // only want to process events of type "workflow_job"
+    if headers
+        .get("X-GitHub-Event")
+        .ok_or((StatusCode::BAD_REQUEST, "Missing event type"))?
+        .to_str()
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid event type"))?
+        != "workflow_job"
+    {
+        return Ok(StatusCode::NO_CONTENT);
+    }
+
+    let secret = config
+        .github_webhook_secret
+        .as_ref()
+        .ok_or((StatusCode::FORBIDDEN, "Github webhooks disabled"))?
+        .as_bytes();
+
+    let mut signature = [0_u8; 32];
+    hex::decode_to_slice(
+        headers
+            .get("X-Hub-Signature-256")
+            .ok_or((StatusCode::BAD_REQUEST, "Missing signature"))?
+            .as_bytes()
+            .split_at(7)
+            .1,
+        &mut signature,
+    )
+    .map_err(|_| (StatusCode::BAD_REQUEST, "Corrupted signature"))?;
+
+    let mut mac = Hmac::<Sha256>::new_from_slice(secret).unwrap();
+    mac.update(&*body);
+    if mac.verify_slice(&signature).is_err() {
+        return Err((StatusCode::BAD_REQUEST, "Invalid signature"));
+    }
+
+    let data: GithubPayload = serde_json::from_str(&*String::from_utf8_lossy(&*body))
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid payload"))?;
+
+    if data.action == "completed" {
+        let (owner, repo) = meta.repo.split_once("/").unwrap();
+        let latest = octocrab::instance()
+            .repos(owner, repo)
+            .releases()
+            .get_latest()
+            .await
+            .map_err(|_| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed getting repository",
+                )
+            })?;
+
+        let local_version = Version::parse(&meta.tag.chars().skip(1).collect::<String>())
+            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Invalid local version"))?;
+        let remote_version =
+            Version::parse(&latest.tag_name.chars().skip(1).collect::<String>())
+                .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Invalid remote version"))?;
+
+        if remote_version > local_version {
+            let asset_url = latest
+                .assets
+                .into_iter()
+                .find(|s| s.name == "makita")
+                .ok_or((StatusCode::INTERNAL_SERVER_ERROR, "Couldn't find asset"))?
+                .browser_download_url;
+
+            info!("update started");
+            let executable = env::current_exe().unwrap().to_str().unwrap().to_string();
+            let bytes = reqwest::get(asset_url)
+                .await
+                .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Failed requesting update asset"))?
+                .bytes()
+                .await
+                .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Failed downloading update asset"))?;
+            fs::write(executable.to_string() + ".part", bytes).await.unwrap();
+            fs::rename(&executable, executable.to_string() + ".old").await.unwrap();
+            fs::rename(executable.to_string() + ".part", &executable).await.unwrap();
+
+            let mut permissions = fs::metadata(&executable).await.unwrap().permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(&executable, permissions).await.unwrap();
+
+            info!("restarting");
+            updates.restart().await.unwrap();
+        } else {
+            return Err((StatusCode::BAD_REQUEST, "No update available"));
+        }
+    }
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub struct UpdatesModule {
@@ -121,7 +196,11 @@ impl UpdatesModule {
         Self { shutdown_tx }
     }
 
-    pub async fn info_command(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
+    pub async fn info_command(
+        &self,
+        ctx: &BotContext,
+        interaction: &ApplicationCommandInteraction,
+    ) -> Result<()> {
         defer_command(&ctx, interaction).await?;
         interaction.create_followup_message(&ctx, |builder| {
             builder.create_embed(|embed| {
@@ -142,43 +221,9 @@ impl UpdatesModule {
         Ok(())
     }
 
-    pub async fn check_command(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
-        defer_command(&ctx, interaction).await?;
-        let msg = match check_update().await? {
-            Some(update) => format!("Update available from `{}` to `{}`", update.old_version, update.new_version),
-            None => "No updates found".to_string()
-        };
-
-        FollowupBuilder::new()
-            .description(msg)
-            .build_command_followup(&ctx.http, interaction)
-            .await
-    }
     pub async fn restart(&self) -> Result<()> {
         RESTARTING.store(true, Ordering::SeqCst);
         self.shutdown_tx.send(()).await?;
         Ok(())
-    }
-    pub async fn update_command(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
-        defer_command(&ctx, interaction).await?;
-
-        do_update().await?;
-        self.restart().await?;
-
-        FollowupBuilder::new()
-            .description("Update successful, restarting...")
-            .build_command_followup(&ctx.http, interaction)
-            .await
-    }
-
-    pub async fn restart_command(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
-        defer_command(&ctx, interaction).await?;
-
-        self.restart().await?;
-
-        FollowupBuilder::new()
-            .description("Restarting...")
-            .build_command_followup(&ctx.http, interaction)
-            .await
     }
 }

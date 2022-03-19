@@ -6,11 +6,9 @@
 pub mod permissions;
 pub mod previews;
 pub mod updates;
-pub mod auth;
 pub mod utils;
 
 pub use permissions::*;
 pub use previews::*;
 pub use updates::UpdatesModule;
-pub use auth::*;
 pub use utils::UtilsModule;

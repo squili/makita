@@ -3,20 +3,20 @@
 // You should have received a copy of the license along with this program
 // If not, see <https://www.gnu.org/licenses/#AGPL>
 
+use crate::modules::{PermissionsModule, PreviewsModule, UpdatesModule, UtilsModule};
 use crate::prelude::*;
-use log::{info, error};
+use crate::router;
+use log::{error, info};
 use serenity::async_trait;
 use serenity::client::{Context, EventHandler};
-use serenity::model::channel::{Message, GuildChannel};
+use serenity::model::channel::{GuildChannel, Message};
 use serenity::model::gateway::{Activity, Ready};
-use sqlx::{Postgres, Pool};
 use serenity::model::guild::Guild;
 use serenity::model::id::{ApplicationId, UserId};
-use serenity::model::interactions::Interaction;
 use serenity::model::interactions::application_command::ApplicationCommandType;
-use crate::router;
+use serenity::model::interactions::Interaction;
 use serenity::utils::Color;
-use crate::modules::{AuthModule, PermissionsModule, PreviewsModule, UpdatesModule, UtilsModule};
+use sqlx::{Pool, Postgres};
 
 pub struct Handler {
     pub pool: Pool<Postgres>,
@@ -25,19 +25,18 @@ pub struct Handler {
     pub updates: Arc<UpdatesModule>,
     pub permissions: Arc<PermissionsModule>,
     pub previews: Arc<PreviewsModule>,
-    pub auth: Arc<AuthModule>,
     pub utils: Arc<UtilsModule>,
 }
 
-pub macro handler_log {
+macro_rules! handler_log {
     ($name: expr, $thing: expr) => {
         if let Err(e) = $thing {
             error!("Error in {}: {:?}", $name, e)
         }
-    }
+    };
 }
 
-macro pass_event {
+macro_rules! pass_event {
     ($name: expr, $instance: expr, $func: path, $($passthrough: expr),*) => {
         async {
             handler_log!($name, $func(&$instance, $($passthrough),*).await);
@@ -76,7 +75,8 @@ impl EventHandler for Handler {
     }
     async fn ready(&self, ctx: Context, _: Ready) {
         info!("received ready event");
-        ctx.shard.set_activity(Some(Activity::listening("your inner thoughts")));
+        ctx.shard
+            .set_activity(Some(Activity::listening("your inner thoughts")));
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
@@ -84,38 +84,61 @@ impl EventHandler for Handler {
         match interaction {
             Interaction::ApplicationCommand(command) => {
                 match match command.data.kind {
-                    ApplicationCommandType::ChatInput => router::chat_input_router(self, &b_ctx, &command).await,
-                    ApplicationCommandType::User => router::user_router(self, &b_ctx, &command).await,
-                    ApplicationCommandType::Message => router::message_router(self, &b_ctx, &command).await,
+                    ApplicationCommandType::ChatInput => {
+                        router::chat_input_router(self, &b_ctx, &command).await
+                    }
+                    ApplicationCommandType::User => {
+                        router::user_router(self, &b_ctx, &command).await
+                    }
+                    ApplicationCommandType::Message => {
+                        router::message_router(self, &b_ctx, &command).await
+                    }
                     _ => Ok(()),
                 } {
                     Ok(_) => {}
-                    Err(err) =>
-                        handler_log!(
-                            "Command Error Response",
-                            command.create_followup_message(&b_ctx, |f|
-                                f.create_embed(|e|
-                                    e.description(format!("{}{}", if err.is::<BotError>() {""} else {"Internal error: "}, err)).color(Color::RED)
-                                )).await)
+                    Err(err) => handler_log!(
+                        "Command Error Response",
+                        command
+                            .create_followup_message(&b_ctx, |f| f.create_embed(|e| e
+                                .description(format!(
+                                    "{}{}",
+                                    if err.is::<BotError>() {
+                                        ""
+                                    } else {
+                                        "Internal error: "
+                                    },
+                                    err
+                                ))
+                                .color(Color::RED)))
+                            .await
+                    ),
                 }
             }
             Interaction::MessageComponent(component) => {
                 if !component.data.custom_id.starts_with("MAK;") {
-                    return
+                    return;
                 }
                 match router::component_router(self, &b_ctx, &component).await {
                     Ok(_) => {}
-                    Err(err) =>
-                        handler_log!(
-                            "Message Component Error Response",
-                            component.create_followup_message(&b_ctx, |r|
-                                r.create_embed(|e|
-                                    e.description(format!("{}{}", if err.is::<BotError>() {""} else {"Internal error: "}, err)).color(Color::RED)
-                                )).await
-                        )
+                    Err(err) => handler_log!(
+                        "Message Component Error Response",
+                        component
+                            .create_followup_message(&b_ctx, |r| r.create_embed(|e| e
+                                .description(format!(
+                                    "{}{}",
+                                    if err.is::<BotError>() {
+                                        ""
+                                    } else {
+                                        "Internal error: "
+                                    },
+                                    err
+                                ))
+                                .color(Color::RED)))
+                            .await
+                    ),
                 }
-            },
-            _ => {},
+            }
+            _ => {}
         }
     }
 }

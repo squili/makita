@@ -7,6 +7,7 @@
 
 use serenity::model::channel::PartialChannel;
 use serenity::model::guild::{PartialMember, Role};
+use serenity::model::id::UserId;
 use serenity::model::interactions::application_command::{
     ApplicationCommandInteractionData, ApplicationCommandInteractionDataOptionValue,
     ApplicationCommandOptionType,
@@ -15,7 +16,6 @@ use serenity::model::misc::{Mention, Mentionable as SerenityMentionable};
 use serenity::model::user::User;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
-use serenity::model::id::UserId;
 
 #[derive(Debug)]
 pub enum Error {
@@ -90,7 +90,7 @@ impl UserOrMember {
             UserOrMember::Member(_, m) => Some(m),
         }
     }
-    
+
     pub fn id(&self) -> &UserId {
         match self {
             UserOrMember::User(u) => &u.id,
@@ -315,8 +315,8 @@ impl SlashMap {
 /// For derive macros
 pub trait FromSlashMap {
     fn from_slash_map(_: SlashMap) -> Result<Self>
-        where
-            Self: Sized;
+    where
+        Self: Sized;
 }
 
 /// Processes a `ApplicationCommandInteractionData` and returns the path and arguments

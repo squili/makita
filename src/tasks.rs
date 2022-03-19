@@ -4,17 +4,17 @@
 // If not, see <https://www.gnu.org/licenses/#AGPL>
 
 use crate::prelude::*;
+use crate::utils::{BotContext, SqlId};
 use anyhow::Result;
 use chrono::{Duration, Utc};
 use serenity::client::Cache;
+use serenity::http::{CacheHttp, Http};
 use serenity::model::id::GuildId;
 use sqlx::postgres::PgRow;
 use sqlx::{PgPool, Row};
 use std::future::Future;
-use serenity::http::{CacheHttp, Http};
 use tokio::sync::broadcast;
 use tokio::time::sleep;
-use crate::utils::{BotContext, SqlId};
 
 #[derive(Clone, Debug)]
 pub enum TaskMessage {
@@ -81,7 +81,7 @@ where
                 },
             },
         } {
-            break
+            break;
         }
         if let Err(e) = call(&ctx).await {
             error!("Error in task {}: {:?}", name, e);
@@ -113,7 +113,8 @@ pub async fn guild_cleanup(ctx: TaskContext) -> Result<()> {
     for guild in sqlx::query("delete from Guilds where expiration < now() returning id")
         .map(|row: PgRow| row.get::<SqlId<GuildId>, &str>("id").0)
         .fetch_all(&ctx.pool)
-        .await? {
+        .await?
+    {
         debug!("deleting guild {}", guild);
         ctx.task_tx.send(TaskMessage::DestroyGuild(guild))?;
     }

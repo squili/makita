@@ -3,24 +3,24 @@
 // You should have received a copy of the license along with this program
 // If not, see <https://www.gnu.org/licenses/#AGPL>
 
-use crate::prelude::*;
-use anyhow::{Result, Error};
-use serenity::model::Permissions as DiscordPermissions;
-use serenity::model::id::{RoleId, UserId, GuildId};
-use std::collections::{HashMap, HashSet};
-use tokio::sync::{broadcast, RwLock};
-use sqlx::{PgPool, Row};
-use crate::utils::{SqlId, FollowupBuilder, BotContext, defer_command, defer_component};
-use crate::macros::impl_cache_functions;
-use serenity::model::interactions::application_command::ApplicationCommandInteraction;
-use serenity::builder::CreateSelectMenuOptions;
 use crate::custom_ids::{build_custom_id, CustomIdType};
+use crate::decode::SlashMap;
+use crate::impl_cache_functions;
+use crate::prelude::*;
+use crate::tasks::TaskMessage;
+use crate::utils::{defer_command, defer_component, BotContext, FollowupBuilder, SqlId};
+use anyhow::{Error, Result};
+use futures::FutureExt;
+use serenity::builder::CreateSelectMenuOptions;
+use serenity::model::guild::Role;
+use serenity::model::id::{GuildId, RoleId, UserId};
+use serenity::model::interactions::application_command::ApplicationCommandInteraction;
 use serenity::model::interactions::message_component::MessageComponentInteraction;
 use serenity::model::misc::Mentionable;
-use crate::decode::SlashMap;
-use futures::FutureExt;
-use serenity::model::guild::Role;
-use crate::tasks::TaskMessage;
+use serenity::model::Permissions as DiscordPermissions;
+use sqlx::{PgPool, Row};
+use std::collections::{HashMap, HashSet};
+use tokio::sync::{broadcast, RwLock};
 
 macro_rules! impl_permission_type {
     ($($enum: ident, $value: expr, $display: expr, $desc: expr),+) => {
@@ -61,13 +61,26 @@ macro_rules! impl_permission_type {
 }
 
 impl_permission_type!(
-    Administrator, "Administrator", "Administrator", "Access to all permissions",
-    WebViewer, "WebViewer", "Web Viewer", "View access to the website",
-    WebEditor, "WebEditor", "Web Editor", "Edit access to the website",
-    ManagePermissions, "ManagePermissions", "Manage Permissions", "Manage bot permissions",
-    ManagePreviews, "ManagePreviews", "Manage Previews", "Manage preview configuration",
-    CreateArchive, "CreateArchive", "Create Archive", "Create entries in the archive channel",
-    Timeout, "Timeout", "Timeout", "Timeout users"
+    Administrator,
+    "Administrator",
+    "Administrator",
+    "Access to all permissions",
+    ManagePermissions,
+    "ManagePermissions",
+    "Manage Permissions",
+    "Manage bot permissions",
+    ManagePreviews,
+    "ManagePreviews",
+    "Manage Previews",
+    "Manage preview configuration",
+    CreateArchive,
+    "CreateArchive",
+    "Create Archive",
+    "Create entries in the archive channel",
+    Timeout,
+    "Timeout",
+    "Timeout",
+    "Timeout users"
 );
 
 pub struct GuildPermissionData {
@@ -78,14 +91,16 @@ pub struct GuildPermissionData {
 
 impl GuildPermissionData {
     fn new(permissions: &DiscordPermissions) -> Self {
-        Self { discord: *permissions, roles: Vec::new(), users: Vec::new() }
+        Self {
+            discord: *permissions,
+            roles: Vec::new(),
+            users: Vec::new(),
+        }
     }
 
     pub fn default(ty: &PermissionType) -> Self {
         match ty {
             PermissionType::Administrator => Self::new(&DiscordPermissions::ADMINISTRATOR),
-            PermissionType::WebViewer => Self::new(&DiscordPermissions::MANAGE_GUILD),
-            PermissionType::WebEditor => Self::new(&DiscordPermissions::MANAGE_GUILD),
             PermissionType::ManagePermissions => Self::new(&DiscordPermissions::ADMINISTRATOR),
             PermissionType::ManagePreviews => Self::new(&DiscordPermissions::MANAGE_GUILD),
             PermissionType::CreateArchive => Self::new(&DiscordPermissions::MANAGE_MESSAGES),
@@ -102,14 +117,30 @@ pub struct GuildPermissionEntry {
 
 impl GuildPermissionEntry {
     fn new(guild_id: &GuildId) -> Self {
-        let mut entry = Self { data: Default::default(), guild_id: *guild_id };
-        entry.data.insert(PermissionType::Administrator, GuildPermissionData::default(&PermissionType::Administrator));
-        entry.data.insert(PermissionType::WebViewer, GuildPermissionData::default(&PermissionType::WebViewer));
-        entry.data.insert(PermissionType::WebEditor, GuildPermissionData::default(&PermissionType::WebEditor));
-        entry.data.insert(PermissionType::ManagePermissions, GuildPermissionData::default(&PermissionType::ManagePermissions));
-        entry.data.insert(PermissionType::ManagePreviews, GuildPermissionData::default(&PermissionType::ManagePreviews));
-        entry.data.insert(PermissionType::CreateArchive, GuildPermissionData::default(&PermissionType::CreateArchive));
-        entry.data.insert(PermissionType::Timeout, GuildPermissionData::default(&PermissionType::Timeout));
+        let mut entry = Self {
+            data: Default::default(),
+            guild_id: *guild_id,
+        };
+        entry.data.insert(
+            PermissionType::Administrator,
+            GuildPermissionData::default(&PermissionType::Administrator),
+        );
+        entry.data.insert(
+            PermissionType::ManagePermissions,
+            GuildPermissionData::default(&PermissionType::ManagePermissions),
+        );
+        entry.data.insert(
+            PermissionType::ManagePreviews,
+            GuildPermissionData::default(&PermissionType::ManagePreviews),
+        );
+        entry.data.insert(
+            PermissionType::CreateArchive,
+            GuildPermissionData::default(&PermissionType::CreateArchive),
+        );
+        entry.data.insert(
+            PermissionType::Timeout,
+            GuildPermissionData::default(&PermissionType::Timeout),
+        );
         entry
     }
 
@@ -123,7 +154,9 @@ impl GuildPermissionEntry {
     }
 
     pub async fn set<F>(&mut self, ty: &PermissionType, pool: &PgPool, mut func: F) -> Result<()>
-    where F: FnMut(&mut GuildPermissionData) {
+    where
+        F: FnMut(&mut GuildPermissionData),
+    {
         let data = self.data.get_mut(ty).unwrap();
         func(data);
         sqlx::query("insert into Permissions (type, guild_id, overwrites, roles, users) values ($1, $2, $3, $4, $5)\
@@ -139,55 +172,35 @@ impl GuildPermissionEntry {
     }
 }
 
-#[derive(Clone, Serialize)]
-pub struct AdminPermissionData {
-    pub manage_admins: bool,
-    pub manage_instance: bool,
-    pub bypass_permissions: bool,
-}
-
 pub struct PermissionsModule {
     guild_cache: RwLock<HashMap<GuildId, GuildPermissionEntry>>,
-    pub admin_cache: RwLock<HashMap<UserId, AdminPermissionData>>,
     pub sudo_users: RwLock<HashSet<UserId>>,
     pool: PgPool,
 }
 
-macro impl_admin_permissions_getter {
-    ($name: ident, $attribute: ident) => {
-        #[allow(unused)]
-        pub async fn $name(&self, user: &UserId) -> bool {
-            if let Some(data) = self.get_admin_permissions(user).await {
-                data.$attribute
-            } else {
-                false
-            }
-        }
-    }
-}
-
 impl PermissionsModule {
-    pub fn new(owner_id: UserId, pool: PgPool) -> Self {
-        let mut admin_cache_inner = HashMap::new();
-        admin_cache_inner.insert(owner_id, AdminPermissionData {
-            manage_admins: true,
-            manage_instance: true,
-            bypass_permissions: true
-        });
+    pub fn new(pool: PgPool) -> Self {
         Self {
             guild_cache: Default::default(),
-            admin_cache: RwLock::new(admin_cache_inner),
             sudo_users: Default::default(),
             pool,
         }
     }
 
-    impl_cache_functions!(guild_read, guild_write, write_guild_async, GuildId, GuildPermissionEntry, guild_cache, GuildPermissionEntry::new);
-    impl_admin_permissions_getter!(get_admin_manage_admins, manage_admins);
-    impl_admin_permissions_getter!(get_admin_manage_instance, manage_instance);
-    impl_admin_permissions_getter!(get_admin_bypass_permissions, bypass_permissions);
+    impl_cache_functions!(
+        guild_read,
+        guild_write,
+        write_guild_async,
+        GuildId,
+        GuildPermissionEntry,
+        guild_cache,
+        GuildPermissionEntry::new
+    );
 
-    pub async fn initialize(self: Arc<Self>, mut task_rx: broadcast::Receiver<TaskMessage>) -> Result<()> {
+    pub async fn initialize(
+        self: Arc<Self>,
+        mut task_rx: broadcast::Receiver<TaskMessage>,
+    ) -> Result<()> {
         // guild cache data
         let rows = sqlx::query("select guild_id, type, overwrites, roles, users from Permissions")
             .fetch_all(&self.pool)
@@ -196,28 +209,22 @@ impl PermissionsModule {
         for row in rows {
             self.guild_write(&row.get::<SqlId<GuildId>, _>("guild_id").0, |entry| {
                 let data = unsafe { entry.get_mut(&row.get::<PermissionType, _>("type")) };
-                data.discord = DiscordPermissions { bits: row.get::<SqlId<u64>, _>("overwrites").0 };
-                data.roles = row.get::<Vec<i64>, _>("roles").iter().map(|s| RoleId(*s as u64)).collect::<Vec<RoleId>>();
-                data.users = row.get::<Vec<i64>, _>("users").iter().map(|s| UserId(*s as u64)).collect::<Vec<UserId>>();
-            }).await;
+                data.discord = DiscordPermissions {
+                    bits: row.get::<SqlId<u64>, _>("overwrites").0,
+                };
+                data.roles = row
+                    .get::<Vec<i64>, _>("roles")
+                    .iter()
+                    .map(|s| RoleId(*s as u64))
+                    .collect::<Vec<RoleId>>();
+                data.users = row
+                    .get::<Vec<i64>, _>("users")
+                    .iter()
+                    .map(|s| UserId(*s as u64))
+                    .collect::<Vec<UserId>>();
+            })
+            .await;
         }
-
-        // admin cache data
-        let rows = sqlx::query("select id, manage_admins, manage_instance, bypass_permissions from Admins")
-            .fetch_all(&self.pool)
-            .await?;
-
-        let mut handle = self.admin_cache.write().await;
-
-        for row in rows {
-            handle.insert(row.get::<SqlId<UserId>, _>("id").0, AdminPermissionData {
-                manage_admins: row.get::<bool, _>("manage_admins"),
-                manage_instance: row.get::<bool, _>("manage_instance"),
-                bypass_permissions: row.get::<bool, _>("bypass_permissions")
-            });
-        }
-
-        drop(handle);
 
         // task event handling
         tokio::spawn(async move {
@@ -235,120 +242,167 @@ impl PermissionsModule {
         Ok(())
     }
 
-    fn entry_perms_check(ty: &PermissionType, entry: &GuildPermissionEntry, highest: &DiscordPermissions, user: &UserId, roles: &[Role]) -> bool {
+    fn entry_perms_check(
+        ty: &PermissionType,
+        entry: &GuildPermissionEntry,
+        highest: &DiscordPermissions,
+        user: &UserId,
+        roles: &[Role],
+    ) -> bool {
         let data = entry.get(ty);
-        (data.discord.bits > 0 && highest.contains(data.discord)) || data.users.contains(user)
+        (data.discord.bits > 0 && highest.contains(data.discord))
+            || data.users.contains(user)
             || roles.iter().any(|item| data.roles.contains(&item.id))
     }
 
-    pub async fn get_admin_permissions(&self, user: &UserId) -> Option<AdminPermissionData> {
-        self.admin_cache.read().await.get(user).cloned()
-    }
-
     #[allow(clippy::needless_lifetimes)] // lifetimes not actually needless
-    pub async fn check<'a>(&self, ty: &'a PermissionType, guild: &GuildId, owner: &UserId, user: &UserId, roles: &[Role]) -> Option<&'a PermissionType> {
+    pub async fn check<'a>(
+        &self,
+        ty: &'a PermissionType,
+        guild: &GuildId,
+        owner: &UserId,
+        user: &UserId,
+        roles: &[Role],
+    ) -> Option<&'a PermissionType> {
         if self.sudo_users.read().await.contains(owner) {
-            return None
+            return None;
         }
 
         if owner == user {
-            return None
+            return None;
         }
         let mut highest_permissions = DiscordPermissions::empty();
         for role in roles {
             highest_permissions.insert(role.permissions);
         }
         self.guild_read(guild, |entry| {
-            if Self::entry_perms_check(&PermissionType::Administrator, entry, &highest_permissions, user, roles) ||
-                Self::entry_perms_check(ty, entry, &highest_permissions, user, roles) {
+            if Self::entry_perms_check(
+                &PermissionType::Administrator,
+                entry,
+                &highest_permissions,
+                user,
+                roles,
+            ) || Self::entry_perms_check(ty, entry, &highest_permissions, user, roles)
+            {
                 None
             } else {
                 Some(ty)
             }
-        }).await
+        })
+        .await
     }
 
-    pub async fn makita_sudo(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
+    pub async fn permissions_list(
+        &self,
+        ctx: &BotContext,
+        interaction: &ApplicationCommandInteraction,
+    ) -> Result<()> {
         defer_command(&ctx, interaction).await?;
-        // let sudo_enabled = self.sudo_enabled.load(Ordering::Relaxed);
-        // self.sudo_enabled.store(!sudo_enabled, Ordering::Relaxed);
-
-        FollowupBuilder::new()
-            .description("sudo command disabled")
-            .build_command_followup(&ctx.http, interaction)
-            .await
-    }
-
-    pub async fn permissions_list(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction) -> Result<()> {
-        defer_command(&ctx, interaction).await?;
-        interaction.create_followup_message(&ctx.http, |a|
-            a.components(|b|
-                b.create_action_row(|c|
-                    c.create_select_menu(|d|
-                        d
-                            .custom_id(build_custom_id(&CustomIdType::ListPermissions, &None))
-                            .options(|e| {
-                                PermissionType::build_select_menu_options(e);
-                                e
-                            })
-                    )
-                )
-            ).create_embed(|b| b.description("Select a permission"))
-        ).await?;
+        interaction
+            .create_followup_message(&ctx.http, |a| {
+                a.components(|b| {
+                    b.create_action_row(|c| {
+                        c.create_select_menu(|d| {
+                            d.custom_id(build_custom_id(&CustomIdType::ListPermissions, &None))
+                                .options(|e| {
+                                    PermissionType::build_select_menu_options(e);
+                                    e
+                                })
+                        })
+                    })
+                })
+                .create_embed(|b| b.description("Select a permission"))
+            })
+            .await?;
 
         Ok(())
     }
 
-    pub async fn permissions_list_component(&self, ctx: &BotContext, interaction: &MessageComponentInteraction) -> Result<()> {
+    pub async fn permissions_list_component(
+        &self,
+        ctx: &BotContext,
+        interaction: &MessageComponentInteraction,
+    ) -> Result<()> {
         defer_component(&ctx, interaction).await?;
-        let ty = PermissionType::from_string(
-            interaction.data.values.get(0).ok_or_else(|| BotError::InvalidRequest("Missing component values".to_string()))?)?;
+        let ty =
+            PermissionType::from_string(interaction.data.values.get(0).ok_or_else(|| {
+                BotError::InvalidRequest("Missing component values".to_string())
+            })?)?;
 
-        let (permissions, roles, users) = self.guild_read(&interaction.guild_id.ok_or(BotError::GuildOnly)?, |entry| {
-            let data = entry.get(&ty);
-            (data.discord.to_string(),
-             data.roles.iter().map(|x| x.mention().to_string()).collect::<Vec<String>>().join("\n"),
-             data.users.iter().map(|x| x.mention().to_string()).collect::<Vec<String>>().join("\n"))
-        }).await;
-
-        interaction.edit_original_interaction_response(&ctx.http, |a|
-            a.create_embed(|b| {
-                if !roles.is_empty() {
-                    b.field("Roles", roles, false);
-                }
-                if !users.is_empty() {
-                    b.field("Users", users, false);
-                }
-                b.field("Default", permissions, false).title(ty.as_display())
-            }).components(|b|
-                b.create_action_row(|c|
-                    c.create_select_menu(|d|
-                        d
-                            .custom_id(build_custom_id(&CustomIdType::ListPermissions, &None))
-                            .options(|e| {
-                                PermissionType::build_select_menu_options(e);
-                                e
-                            })
-                            .placeholder(ty.as_display())
-                    )
+        let (permissions, roles, users) = self
+            .guild_read(&interaction.guild_id.ok_or(BotError::GuildOnly)?, |entry| {
+                let data = entry.get(&ty);
+                (
+                    data.discord.to_string(),
+                    data.roles
+                        .iter()
+                        .map(|x| x.mention().to_string())
+                        .collect::<Vec<String>>()
+                        .join("\n"),
+                    data.users
+                        .iter()
+                        .map(|x| x.mention().to_string())
+                        .collect::<Vec<String>>()
+                        .join("\n"),
                 )
-            )
-        ).await?;
+            })
+            .await;
+
+        interaction
+            .edit_original_interaction_response(&ctx.http, |a| {
+                a.create_embed(|b| {
+                    if !roles.is_empty() {
+                        b.field("Roles", roles, false);
+                    }
+                    if !users.is_empty() {
+                        b.field("Users", users, false);
+                    }
+                    b.field("Default", permissions, false)
+                        .title(ty.as_display())
+                })
+                .components(|b| {
+                    b.create_action_row(|c| {
+                        c.create_select_menu(|d| {
+                            d.custom_id(build_custom_id(&CustomIdType::ListPermissions, &None))
+                                .options(|e| {
+                                    PermissionType::build_select_menu_options(e);
+                                    e
+                                })
+                                .placeholder(ty.as_display())
+                        })
+                    })
+                })
+            })
+            .await?;
 
         Ok(())
     }
 
-    pub async fn permissions_set(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
+    pub async fn permissions_set(
+        &self,
+        ctx: &BotContext,
+        interaction: &ApplicationCommandInteraction,
+        args: SlashMap,
+    ) -> Result<()> {
         defer_command(&ctx, interaction).await?;
         let ty = PermissionType::from_string(&args.get_string("permission")?)?;
         let permissions = DiscordPermissions::from_bits(args.get_integer("bits")? as u64)
             .ok_or_else(|| BotError::InvalidRequest("Invalid permissions bits".to_string()))?;
 
-        self.write_guild_async(&interaction.guild_id.ok_or(BotError::GuildOnly)?, |entry: &mut GuildPermissionEntry, _| async move {
-            entry.set(&ty, &self.pool, |data| {
-                data.discord = permissions;
-            }).await
-        }.boxed()).await?;
+        self.write_guild_async(
+            &interaction.guild_id.ok_or(BotError::GuildOnly)?,
+            |entry: &mut GuildPermissionEntry, _| {
+                async move {
+                    entry
+                        .set(&ty, &self.pool, |data| {
+                            data.discord = permissions;
+                        })
+                        .await
+                }
+                .boxed()
+            },
+        )
+        .await?;
 
         FollowupBuilder::new()
             .description("Success")
@@ -356,7 +410,12 @@ impl PermissionsModule {
             .await
     }
 
-    pub async fn permissions_add(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
+    pub async fn permissions_add(
+        &self,
+        ctx: &BotContext,
+        interaction: &ApplicationCommandInteraction,
+        args: SlashMap,
+    ) -> Result<()> {
         defer_command(&ctx, interaction).await?;
         let ty = PermissionType::from_string(&args.get_string("permission")?)?;
         let user = args.get_user("user").map(|s| s.get_user().id).ok();
@@ -371,19 +430,27 @@ impl PermissionsModule {
         }
 
         if let (None, None) = (user, role_id) {
-            return Err(Error::new(BotError::Generic("Must specify either `user` or `role`".into())))
+            return Err(Error::new(BotError::Generic(
+                "Must specify either `user` or `role`".into(),
+            )));
         }
 
-        self.write_guild_async(&guild_id, |entry: &mut GuildPermissionEntry, _| async move {
-            entry.set(&ty, &self.pool, |data| {
-                if let Some(s) = user {
-                    data.users.push(s);
-                }
-                if let Some(s) = role_id {
-                    data.roles.push(s);
-                }
-            }).await
-        }.boxed()).await?;
+        self.write_guild_async(&guild_id, |entry: &mut GuildPermissionEntry, _| {
+            async move {
+                entry
+                    .set(&ty, &self.pool, |data| {
+                        if let Some(s) = user {
+                            data.users.push(s);
+                        }
+                        if let Some(s) = role_id {
+                            data.roles.push(s);
+                        }
+                    })
+                    .await
+            }
+            .boxed()
+        })
+        .await?;
 
         FollowupBuilder::new()
             .description("Success")
@@ -391,41 +458,71 @@ impl PermissionsModule {
             .await
     }
 
-    pub async fn permissions_remove(&self, ctx: &BotContext, interaction: &ApplicationCommandInteraction, args: SlashMap) -> Result<()> {
+    pub async fn permissions_remove(
+        &self,
+        ctx: &BotContext,
+        interaction: &ApplicationCommandInteraction,
+        args: SlashMap,
+    ) -> Result<()> {
         defer_command(&ctx, interaction).await?;
         let ty = PermissionType::from_string(&args.get_string("permission")?)?;
         let user = args.get_user("user").map(|s| s.get_user().id).ok();
         let role = args.get_role("role").map(|s| s.id).ok();
 
         if let (None, None) = (user, role) {
-            return Err(Error::new(BotError::Generic("Must specify either `user` or `role`".into())))
+            return Err(Error::new(BotError::Generic(
+                "Must specify either `user` or `role`".into(),
+            )));
         }
 
         let mut user_found = true;
         let mut role_found = true;
-        self.write_guild_async(&interaction.guild_id.ok_or(BotError::GuildOnly)?, |entry: &mut GuildPermissionEntry, _| async move {
-            entry.set(&ty, &self.pool, |data| {
-                if let Some(s) = user {
-                    match data.users.binary_search(&s) {
-                        Ok(s) => { data.users.remove(s); }
-                        Err(_) => { user_found = false; }
-                    }
+        self.write_guild_async(
+            &interaction.guild_id.ok_or(BotError::GuildOnly)?,
+            |entry: &mut GuildPermissionEntry, _| {
+                async move {
+                    entry
+                        .set(&ty, &self.pool, |data| {
+                            if let Some(s) = user {
+                                match data.users.binary_search(&s) {
+                                    Ok(s) => {
+                                        data.users.remove(s);
+                                    }
+                                    Err(_) => {
+                                        user_found = false;
+                                    }
+                                }
+                            }
+                            if let Some(s) = role {
+                                match data.roles.binary_search(&s) {
+                                    Ok(s) => {
+                                        data.roles.remove(s);
+                                    }
+                                    Err(_) => {
+                                        role_found = false;
+                                    }
+                                }
+                            }
+                        })
+                        .await
                 }
-                if let Some(s) = role {
-                    match data.roles.binary_search(&s) {
-                        Ok(s) => { data.roles.remove(s); }
-                        Err(_) => { role_found = false; }
-                    }
-                }
-            }).await
-        }.boxed()).await?;
+                .boxed()
+            },
+        )
+        .await?;
 
         if !user_found {
-            return Err(Error::new(BotError::Generic(format!("User {} not added", user.unwrap().mention()))));
+            return Err(Error::new(BotError::Generic(format!(
+                "User {} not added",
+                user.unwrap().mention()
+            ))));
         }
 
         if !role_found {
-            return Err(Error::new(BotError::Generic(format!("Role {} not added", role.unwrap().mention()))));
+            return Err(Error::new(BotError::Generic(format!(
+                "Role {} not added",
+                role.unwrap().mention()
+            ))));
         }
 
         FollowupBuilder::new()

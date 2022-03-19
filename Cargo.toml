@@ -12,38 +12,34 @@ edition = "2021"
 resolver = "2"
 
 [dependencies]
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "parking_lot"] }
-anyhow = "1"
+tokio = { version = "1.17.0", features = ["macros", "rt-multi-thread", "parking_lot"] }
+anyhow = "1.0.56"
 # this is actually a fork of serenity because... well it's a long story
 serenity = { git = "https://github.com/squili/serenity-makita.git", rev = "d2b073b4e4d43598480165d8aca109c900813adc", default-features = false, features = ["client", "http", "model", "unstable_discord_api", "cache", "rustls_backend", "gateway"] }
-log = "0.4"
-log4rs = { version = "1", default-features = false, features = ["console_appender", "rolling_file_appender",
+log = "0.4.14"
+log4rs = { version = "1.0.0", default-features = false, features = ["console_appender", "rolling_file_appender",
     "pattern_encoder", "compound_policy", "size_trigger", "fixed_window_roller", "background_rotation"] }
-serde = { version = "1", features = ["derive"] }
-ron = "0.6"
-sqlx = { version = "0.5", features = ["runtime-tokio-rustls", "postgres", "chrono"] }
-chrono = "0.4"
-regex = "1"
-futures = "0.3"
-clap = "3.0.0-beta.4"
-dialoguer = "0.8"
-reqwest = "0.11.7"
-octocrab = "0.12"
-semver = "1"
-async-ctrlc = "1"
-serde_json = "1"
-axum = { version = "0.4", features = ["http2"] }
-tower = "0.4"
-tower-http = { version = "0.1.2", features = ["cors"] }
-jsonwebtokens = "1"
-rcgen = { version = "0.8", features = ["pem"] }
-base64 = "0.13"
-hmac = "0.12"
-sha2 = "0.10"
-hex = "0.4"
+serde = { version = "1.0.136", features = ["derive"] }
+ron = "0.7.0"
+sqlx = { version = "0.5.11", features = ["runtime-tokio-rustls", "postgres", "chrono"] }
+chrono = "0.4.19"
+regex = "1.5.5"
+futures = "0.3.21"
+clap = { version = "3.1.6", features = ["derive"] }
+dialoguer = "0.10.0"
+reqwest = "0.11.10"
+octocrab = "0.15.4"
+semver = "1.0.6"
+async-ctrlc = "1.2.0"
+serde_json = "1.0.79"
+axum = "0.4.8"
+base64 = "0.13.0"
+hmac = "0.12.1"
+sha2 = "0.10.2"
+hex = "0.4.3"
 
 [build-dependencies]
 # needed for converting commands.json5
-serde_json = "1.0"
-json5 = "0.3"
-anyhow = "1"
+serde_json = "1.0.79"
+json5 = "0.4.1"
+anyhow = "1.0.56"

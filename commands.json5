@@ -6,45 +6,6 @@
 // array of commands
 // discord docs: https://discord.com/developers/docs/interactions/application-commands#application-command-object
 [
-  // manager command - only created in manager guild
-  {
-    type: 1,
-    name: 'makita',
-    description: ' ',
-    options: [
-      {
-        type: 1,
-        name: 'sudo',
-        description: 'Enable sudo mode',
-        options: [],
-      },
-      {
-        type: 1,
-        name: 'checkupdates',
-        description: 'Check for updates',
-        options: [],
-      },
-      {
-        type: 1,
-        name: 'update',
-        description: 'Update and restart the bot',
-        options: [],
-      },
-      {
-        type: 1,
-        name: 'restart',
-        description: 'Restart the bot',
-        options: [],
-      },
-      {
-        type: 1,
-        name: 'debug',
-        description: 'Some debug functionality, depending on the build',
-        options: [],
-      }
-    ]
-  },
-  // general commands
   {
     type: 1,
     name: 'info',
@@ -54,7 +15,7 @@
   {
     type: 1,
     name: 'permissions',
-    description: ' ',
+    description: 'Permissions configuration',
     options: [
       {
         type: 1,
@@ -159,7 +120,7 @@
   {
     type: 1,
     name: 'previews',
-    description: ' ',
+    description: 'Previews commands',
     options: [
       {
         type: 1,

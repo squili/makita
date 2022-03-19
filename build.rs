@@ -1,7 +1,7 @@
+use anyhow::Result;
 use serde_json::Value;
 use std::env::var;
 use std::fs::{read_to_string, write};
-use anyhow::Result;
 
 fn main() -> Result<()> {
     // sql migrations
