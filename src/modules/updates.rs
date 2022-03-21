@@ -99,7 +99,7 @@ async fn github_webhook(
         .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid event type"))?
         != "workflow_job"
     {
-        return Ok(StatusCode::NO_CONTENT);
+        return Ok((StatusCode::OK, "Ignored event type"));
     }
 
     let secret = config
@@ -149,7 +149,7 @@ async fn github_webhook(
             Version::parse(&latest.tag_name.chars().skip(1).collect::<String>())
                 .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Invalid remote version"))?;
 
-        if remote_version > local_version {
+        return if remote_version > local_version {
             let asset_url = latest
                 .assets
                 .into_iter()
@@ -175,12 +175,13 @@ async fn github_webhook(
 
             info!("restarting");
             updates.restart().await.unwrap();
+            Ok((StatusCode::OK, "Update started"))
         } else {
-            return Err((StatusCode::BAD_REQUEST, "No update available"));
+            Err((StatusCode::BAD_REQUEST, "No update available"))
         }
     }
 
-    Ok(StatusCode::NO_CONTENT)
+    Ok((StatusCode::OK, "Ignored action value"))
 }
 
 pub struct UpdatesModule {
