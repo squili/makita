@@ -1,0 +1,6 @@
+[build.env]
+passthrough = [
+    "GIT_TAG",
+    "GIT_COMMIT",
+    "GIT_REPO",
+]
