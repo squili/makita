@@ -41,12 +41,8 @@ const fn init_git_data() -> Option<GitMeta> {
         option_env!("GIT_REPO"),
     ) {
         (Some(tag), Some(commit), Some(repo)) => Some(GitMeta { tag, commit, repo }),
-        // _ => None,
-        _ => Some(GitMeta {
-            tag: "v0.0.0",
-            commit: "1234567",
-            repo: "squili/makita",
-        }), // kept here for local update testing
+        _ => None,
+        // _ => Some(GitMeta { tag: "v0.0.0", commit: "1234567", repo: "squili/makita" }), // kept here for local update testing
     }
 }
 
