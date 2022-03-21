@@ -23,5 +23,5 @@ jobs:
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
-          files: target/release/makita
+          files: target/x86_64-unknown-linux-musl/release/makita
           fail_on_unmatched_files: true
