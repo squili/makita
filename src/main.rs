@@ -134,7 +134,10 @@ async fn start() -> Result<()> {
         .application_id(config.client_id)
         .event_handler(handler)
         .intents(
-            GatewayIntents::GUILDS | GatewayIntents::GUILD_MESSAGES | GatewayIntents::GUILD_MEMBERS,
+            GatewayIntents::GUILDS
+                | GatewayIntents::GUILD_MESSAGES
+                | GatewayIntents::GUILD_MEMBERS
+                | GatewayIntents::MESSAGE_CONTENT,
         )
         .await?;
 
