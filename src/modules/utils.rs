@@ -7,7 +7,7 @@ use crate::decode::SlashMap;
 use crate::prelude::*;
 use crate::utils::{highest_role, link_guild, parse_duration, FollowupBuilder};
 use anyhow::Result;
-use chrono::{Duration};
+use chrono::Duration;
 use serenity::builder::CreateEmbed;
 use serenity::model::interactions::application_command::ApplicationCommandInteraction;
 use serenity::model::Timestamp;
@@ -98,7 +98,9 @@ impl UtilsModule {
         }
 
         // it's actually kinda nice that, with discord's timeout feature, this is all i need to write out to do the actual changes
-        target.edit(&ctx, |e| e.disable_communication_until_datetime(until)).await?;
+        target
+            .edit(&ctx, |e| e.disable_communication_until_datetime(until))
+            .await?;
 
         let until = format!(
             "<t:{0}:{1}> <t:{0}:R>",

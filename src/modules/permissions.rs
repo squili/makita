@@ -209,9 +209,9 @@ impl PermissionsModule {
         for row in rows {
             self.guild_write(&row.get::<SqlId<GuildId>, _>("guild_id").0, |entry| {
                 let data = unsafe { entry.get_mut(&row.get::<PermissionType, _>("type")) };
-                data.discord = DiscordPermissions::from_bits(
-                    row.get::<SqlId<u64>, _>("overwrites").0,
-                ).unwrap();
+                data.discord =
+                    DiscordPermissions::from_bits(row.get::<SqlId<u64>, _>("overwrites").0)
+                        .unwrap();
                 data.roles = row
                     .get::<Vec<i64>, _>("roles")
                     .iter()

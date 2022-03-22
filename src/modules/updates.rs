@@ -161,13 +161,29 @@ async fn github_webhook(
             let executable = env::current_exe().unwrap().to_str().unwrap().to_string();
             let bytes = reqwest::get(asset_url)
                 .await
-                .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Failed requesting update asset"))?
+                .map_err(|_| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Failed requesting update asset",
+                    )
+                })?
                 .bytes()
                 .await
-                .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Failed downloading update asset"))?;
-            fs::write(executable.to_string() + ".part", bytes).await.unwrap();
-            fs::rename(&executable, executable.to_string() + ".old").await.unwrap();
-            fs::rename(executable.to_string() + ".part", &executable).await.unwrap();
+                .map_err(|_| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Failed downloading update asset",
+                    )
+                })?;
+            fs::write(executable.to_string() + ".part", bytes)
+                .await
+                .unwrap();
+            fs::rename(&executable, executable.to_string() + ".old")
+                .await
+                .unwrap();
+            fs::rename(executable.to_string() + ".part", &executable)
+                .await
+                .unwrap();
 
             let mut permissions = fs::metadata(&executable).await.unwrap().permissions();
             permissions.set_mode(0o755);
@@ -178,7 +194,7 @@ async fn github_webhook(
             Ok((StatusCode::OK, "Update started"))
         } else {
             Err((StatusCode::BAD_REQUEST, "No update available"))
-        }
+        };
     }
 
     Ok((StatusCode::OK, "Ignored action value"))
