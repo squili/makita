@@ -313,7 +313,7 @@ impl PreviewsModule {
                     "{} joined {}on <t:{time}:f>, <t:{time}:R>",
                     message.author.mention(),
                     maybe_link_foreign,
-                    time = message.timestamp.timestamp() as u64
+                    time = message.timestamp.unix_timestamp() as u64
                 ));
             }
             MessageType::ChannelFollowAdd => {
@@ -798,7 +798,7 @@ impl PreviewsModule {
         }
         for chunk in chunks {
             interaction
-                .create_followup_message(&ctx.http, |m| m.embeds(chunk.to_vec()))
+                .create_followup_message(&ctx.http, |m| m.set_embeds(chunk.to_vec()))
                 .await?;
         }
         if !downloaded.is_empty() {

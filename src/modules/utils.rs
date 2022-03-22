@@ -7,9 +7,10 @@ use crate::decode::SlashMap;
 use crate::prelude::*;
 use crate::utils::{highest_role, link_guild, parse_duration, FollowupBuilder};
 use anyhow::Result;
-use chrono::{Duration, Utc};
+use chrono::{Duration};
 use serenity::builder::CreateEmbed;
 use serenity::model::interactions::application_command::ApplicationCommandInteraction;
+use serenity::model::Timestamp;
 use serenity::prelude::Mentionable;
 
 pub struct UtilsModule {}
@@ -39,7 +40,7 @@ impl UtilsModule {
                     .await;
             }
         };
-        let until = Utc::now() + duration;
+        let until = Timestamp::now() + duration;
 
         let target = interaction
             .guild_id
@@ -97,11 +98,11 @@ impl UtilsModule {
         }
 
         // it's actually kinda nice that, with discord's timeout feature, this is all i need to write out to do the actual changes
-        target.edit(&ctx, |e| e.timeout_until(&until)).await?;
+        target.edit(&ctx, |e| e.disable_communication_until_datetime(until)).await?;
 
         let until = format!(
             "<t:{0}:{1}> <t:{0}:R>",
-            until.timestamp(),
+            until.unix_timestamp(),
             if duration <= Duration::hours(1) {
                 "t"
             } else {
@@ -176,7 +177,7 @@ impl UtilsModule {
             .member(&ctx, args.get_user("target")?.id())
             .await?;
 
-        target.edit(&ctx, |e| e.timeout_clear()).await?;
+        target.edit(&ctx, |e| e.enable_communication()).await?;
 
         FollowupBuilder::new()
             .description("Success")

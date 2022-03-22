@@ -63,7 +63,7 @@ macro_rules! ensure_permission_base {
                         r.kind(InteractionResponseType::ChannelMessageWithSource)
                             .interaction_response_data(|d| {
                                 d.flags(InteractionApplicationCommandCallbackDataFlags::EPHEMERAL)
-                                    .create_embed(|e| {
+                                    .embed(|e| {
                                         e.description(format!(
                                             "Missing permission `{}`",
                                             missing.as_display()

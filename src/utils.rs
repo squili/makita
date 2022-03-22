@@ -141,7 +141,7 @@ impl FollowupBuilder {
             .create_interaction_response(&http, |r| {
                 r.kind(InteractionResponseType::ChannelMessageWithSource)
                     .interaction_response_data(|m| {
-                        m.create_embed(|e| {
+                        m.embed(|e| {
                             build_entry!(self, e, title);
                             build_entry!(self, e, description);
                             e
@@ -164,7 +164,7 @@ impl FollowupBuilder {
     ) -> Result<()> {
         interaction
             .edit_original_interaction_response(&http, |m| {
-                m.create_embed(|e| {
+                m.embed(|e| {
                     build_entry!(self, e, title);
                     build_entry!(self, e, description);
                     e
@@ -182,7 +182,7 @@ impl FollowupBuilder {
     ) -> Result<()> {
         interaction
             .create_followup_message(&http, |m| {
-                m.create_embed(|e| {
+                m.embed(|e| {
                     build_entry!(self, e, title);
                     build_entry!(self, e, description);
                     e
@@ -207,7 +207,7 @@ impl FollowupBuilder {
             .create_interaction_response(&http, |r| {
                 r.kind(InteractionResponseType::ChannelMessageWithSource)
                     .interaction_response_data(|m| {
-                        m.create_embed(|e| {
+                        m.embed(|e| {
                             build_entry!(self, e, title);
                             build_entry!(self, e, description);
                             e
@@ -231,7 +231,7 @@ impl FollowupBuilder {
     ) -> Result<()> {
         interaction
             .edit_original_interaction_response(&http, |m| {
-                m.create_embed(|e| {
+                m.embed(|e| {
                     build_entry!(self, e, title);
                     build_entry!(self, e, description);
                     e
@@ -250,7 +250,7 @@ impl FollowupBuilder {
     ) -> Result<()> {
         interaction
             .create_followup_message(&http, |m| {
-                m.create_embed(|e| {
+                m.embed(|e| {
                     build_entry!(self, e, title);
                     build_entry!(self, e, description);
                     e

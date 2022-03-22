@@ -200,7 +200,7 @@ impl UpdatesModule {
     ) -> Result<()> {
         defer_command(&ctx, interaction).await?;
         interaction.create_followup_message(&ctx, |builder| {
-            builder.create_embed(|embed| {
+            builder.embed(|embed| {
                 embed
                     .field("Bot Info", "Created by <@719046554744520754>\nLicensed under [AGPL](https://www.gnu.org/licenses/#AGPL)", false)
                     .field("Links", format!("[Docs](https://squili.github.io/makita-docs/)\n[Donate](https://donate.squi.live)\n\

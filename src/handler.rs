@@ -99,7 +99,7 @@ impl EventHandler for Handler {
                     Err(err) => handler_log!(
                         "Command Error Response",
                         command
-                            .create_followup_message(&b_ctx, |f| f.create_embed(|e| e
+                            .create_followup_message(&b_ctx, |f| f.embed(|e| e
                                 .description(format!(
                                     "{}{}",
                                     if err.is::<BotError>() {
@@ -123,7 +123,7 @@ impl EventHandler for Handler {
                     Err(err) => handler_log!(
                         "Message Component Error Response",
                         component
-                            .create_followup_message(&b_ctx, |r| r.create_embed(|e| e
+                            .create_followup_message(&b_ctx, |r| r.embed(|e| e
                                 .description(format!(
                                     "{}{}",
                                     if err.is::<BotError>() {

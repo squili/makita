@@ -163,7 +163,7 @@ impl GuildPermissionEntry {
                          on conflict on constraint permissions_idx do update set overwrites = $3, roles = $4, users = $5")
             .bind(&ty)
             .bind(&SqlId(self.guild_id))
-            .bind(&SqlId(data.discord.bits))
+            .bind(&SqlId(data.discord.bits()))
             .bind(data.roles.iter().map(|s| s.0 as i64).collect::<Vec<i64>>())
             .bind(data.users.iter().map(|s| s.0 as i64).collect::<Vec<i64>>())
             .execute(pool)
@@ -209,9 +209,9 @@ impl PermissionsModule {
         for row in rows {
             self.guild_write(&row.get::<SqlId<GuildId>, _>("guild_id").0, |entry| {
                 let data = unsafe { entry.get_mut(&row.get::<PermissionType, _>("type")) };
-                data.discord = DiscordPermissions {
-                    bits: row.get::<SqlId<u64>, _>("overwrites").0,
-                };
+                data.discord = DiscordPermissions::from_bits(
+                    row.get::<SqlId<u64>, _>("overwrites").0,
+                ).unwrap();
                 data.roles = row
                     .get::<Vec<i64>, _>("roles")
                     .iter()
@@ -250,7 +250,7 @@ impl PermissionsModule {
         roles: &[Role],
     ) -> bool {
         let data = entry.get(ty);
-        (data.discord.bits > 0 && highest.contains(data.discord))
+        (data.discord.bits() > 0 && highest.contains(data.discord))
             || data.users.contains(user)
             || roles.iter().any(|item| data.roles.contains(&item.id))
     }
@@ -311,7 +311,7 @@ impl PermissionsModule {
                         })
                     })
                 })
-                .create_embed(|b| b.description("Select a permission"))
+                .embed(|b| b.description("Select a permission"))
             })
             .await?;
 
@@ -350,7 +350,7 @@ impl PermissionsModule {
 
         interaction
             .edit_original_interaction_response(&ctx.http, |a| {
-                a.create_embed(|b| {
+                a.embed(|b| {
                     if !roles.is_empty() {
                         b.field("Roles", roles, false);
                     }
