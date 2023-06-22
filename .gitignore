@@ -1,0 +1,6 @@
+/.idea
+/target
+/*.log
+/config.ron
+/public.pem
+/private.pem

@@ -1,0 +1,243 @@
+// Copyright 2021 Squili
+// This program is distributed under the terms of the GNU Affero General Public License
+// You should have received a copy of the license along with this program
+// If not, see <https://www.gnu.org/licenses/#AGPL>
+
+// array of commands
+// discord docs: https://discord.com/developers/docs/interactions/application-commands#application-command-object
+[
+  {
+    type: 1,
+    name: 'info',
+    description: 'Makita bot info',
+    options: []
+  },
+  {
+    type: 1,
+    name: 'permissions',
+    description: 'Permissions configuration',
+    options: [
+      {
+        type: 1,
+        name: 'list',
+        description: 'List permission entries',
+        options: []
+      },
+      {
+        type: 1,
+        name: 'set',
+        description: 'Set discord permission requirement',
+        options: [
+          {
+            type: 3,
+            name: 'permission',
+            description: 'Target bot permissions',
+            required: true,
+            choices: [
+              { name: 'Administrator', value: 'Administrator' },
+              { name: 'Web Viewer', value: 'WebViewer' },
+              { name: 'Web Editor', value: 'WebEditor' },
+              { name: 'Manage Permissions', value: 'ManagePermissions' },
+              { name: 'Manage Previews', value: 'ManagePreviews' },
+              { name: 'Create Archive', value: 'CreateArchive' },
+              { name: 'Timeout', value: 'Timeout' }
+            ]
+          },
+          {
+            type: 4,
+            name: 'bits',
+            description: 'Permission bits to set to',
+            required: true
+          }
+        ]
+      },
+      {
+        type: 1,
+        name: 'add',
+        description: 'Add to permission lists',
+        options: [
+          {
+            type: 3,
+            name: 'permission',
+            description: 'Target bot permissions',
+            required: true,
+            choices: [
+              { name: 'Administrator', value: 'Administrator' },
+              { name: 'Web Viewer', value: 'WebViewer' },
+              { name: 'Web Editor', value: 'WebEditor' },
+              { name: 'Manage Permissions', value: 'ManagePermissions' },
+              { name: 'Manage Previews', value: 'ManagePreviews' },
+              { name: 'Create Archive', value: 'CreateArchive' },
+              { name: 'Timeout', value: 'Timeout' }
+            ]
+          },
+          {
+            type: 6,
+            name: 'user',
+            description: 'Target user'
+          },
+          {
+            type: 8,
+            name: 'role',
+            description: 'Target role'
+          }
+        ]
+      },
+      {
+        type: 1,
+        name: 'remove',
+        description: 'Remove from permission lists',
+        options: [
+          {
+            type: 3,
+            name: 'permission',
+            description: 'Target bot permissions',
+            required: true,
+            choices: [
+              { name: 'Administrator', value: 'Administrator' },
+              { name: 'Web Viewer', value: 'WebViewer' },
+              { name: 'Web Editor', value: 'WebEditor' },
+              { name: 'Manage Permissions', value: 'ManagePermissions' },
+              { name: 'Manage Previews', value: 'ManagePreviews' },
+              { name: 'Create Archive', value: 'CreateArchive' },
+              { name: 'Timeout', value: 'Timeout' }
+            ]
+          },
+          {
+            type: 6,
+            name: 'user',
+            description: 'Target user'
+          },
+          {
+            type: 8,
+            name: 'role',
+            description: 'Target role'
+          }
+        ]
+      }
+    ]
+  },
+  {
+    type: 1,
+    name: 'previews',
+    description: 'Previews commands',
+    options: [
+      {
+        type: 1,
+        name: 'view',
+        description: 'Preview a message',
+        options: [
+          {
+            type: 3,
+            name: 'target',
+            description: 'Link to message',
+            required: true
+          }
+        ]
+      },
+      {
+        type: 1,
+        name: 'add',
+        description: 'Add channel to automatic preview list',
+        options: [
+          {
+            type: 7,
+            name: 'target',
+            description: 'Channel to add',
+            required: true,
+            channel_types: [0, 11, 12]
+          }
+        ]
+      },
+      {
+        type: 1,
+        name: 'remove',
+        description: 'Remove channel from automatic preview list',
+        options: [
+          {
+            type: 7,
+            name: 'target',
+            description: 'Channel to remove',
+            required: true,
+            channel_types: [0, 11, 12]
+          }
+        ]
+      },
+      {
+        type: 1,
+        name: 'list',
+        description: 'List channels in automatic preview list'
+      },
+      {
+        type: 1,
+        name: 'archive',
+        description: 'Set archive channel',
+        options: [
+          {
+            type: 7,
+            name: 'target',
+            description: 'Channel to set (leave empty to unset)',
+            channel_types: [0, 11, 12]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    type: 1,
+    name: 'timeout',
+    description: 'Put naughty chatters into timeout',
+    options: [
+      {
+        type: 6,
+        name: 'target',
+        description: 'The user you want to bonk',
+        required: true
+      },
+      {
+        type: 3,
+        name: 'duration',
+        description: 'Duration in the format of 1d2h3m4s. Can be at most 28 days',
+        required: true
+      },
+      {
+        type: 3,
+        name: 'reason',
+        description: 'You know what this field is for',
+        required: true
+      },
+      {
+        type: 5,
+        name: 'shame',
+        description: 'Sends a message in this channel about the timeout - default true'
+      },
+      {
+        type: 5,
+        name: 'dm',
+        description: "Sends a message to the user's DMs about the timeout - default true"
+      },
+      {
+        type: 5,
+        name: 'anon',
+        description: 'Hides moderator name from mute messages - default false'
+      }
+    ]
+  },
+  {
+    type: 1,
+    name: 'untimeout',
+    description: 'Remove timeout from naughty users. Can also be used to fix some client glitches',
+    options: [
+      {
+        type: 6,
+        name: 'target',
+        description: 'The user you want to unbonk',
+        required: true
+      }
+    ]
+  },
+  {
+    type: 3,
+    name: 'Archive',
+  },
+]
