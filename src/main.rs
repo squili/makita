@@ -102,7 +102,7 @@ async fn start() -> Result<()> {
     info!("connecting to database");
     let pool = PgPoolOptions::new().connect(&config.database_url).await?;
 
-    sqlx::migrate!().run(&pool).await?;
+//    sqlx::migrate!().run(&pool).await?;
 
     info!("initializing handler");
     let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
