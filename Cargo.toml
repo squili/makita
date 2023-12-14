@@ -20,7 +20,7 @@ log4rs = { version = "1.2.0", default-features = false, features = ["console_app
     "pattern_encoder", "compound_policy", "size_trigger", "fixed_window_roller", "background_rotation"] }
 serde = { version = "1.0.193", features = ["derive"] }
 ron = "0.7.1"
-sqlx = { version = "0.6.2", features = ["runtime-tokio-rustls", "postgres", "chrono"] }
+sqlx = { version = "0.7.3", features = ["runtime-tokio-rustls", "postgres", "chrono"] }
 chrono = "0.4.31"
 regex = "1.10.2"
 futures = "0.3.29"
