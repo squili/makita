@@ -37,12 +37,12 @@ impl Display for Error {
                 expected,
                 found,
                 name,
-            } => f.write_str(&*format!(
+            } => f.write_str(&format!(
                 "Wrong type in field `{}` (expected `{}`, got `{}`)",
                 name, expected, found
             )),
             Error::MissingValue { name } => {
-                f.write_str(&*format!("Missing value in field `{}`", name))
+                f.write_str(&format!("Missing value in field `{}`", name))
             }
         }
     }

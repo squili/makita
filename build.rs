@@ -14,7 +14,7 @@ fn main() -> Result<()> {
 
     println!("cargo:rustc-env=MAKITA_SLASH_LOCATION={}", target_file);
 
-    let source = json5::from_str::<Value>(&*read_to_string("commands.json5")?)?;
+    let source = json5::from_str::<Value>(&read_to_string("commands.json5")?)?;
     let mut data = Vec::new();
 
     if let Value::Array(commands) = source {

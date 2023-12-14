@@ -78,7 +78,7 @@ pub async fn invite(opts: InviteOpts) -> Result<()> {
     match opts.id {
         Some(id) => invite_inner(id),
         None => {
-            let config: Config = ron::from_str(&*fs::read_to_string("config.ron")?)?;
+            let config: Config = ron::from_str(&fs::read_to_string("config.ron")?)?;
             invite_inner(Http::new(&config.token).get_current_user().await?.id.0)
         }
     }

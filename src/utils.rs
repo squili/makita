@@ -334,16 +334,14 @@ pub async fn defer_component<T: AsRef<Http>>(
 }
 
 #[derive(Debug)]
+#[derive(Default)]
 pub enum OptionalOption<T> {
     Present(Option<T>),
+    #[default]
     Missing,
 }
 
-impl<T> Default for OptionalOption<T> {
-    fn default() -> Self {
-        OptionalOption::Missing
-    }
-}
+
 
 impl<'de, T> Deserialize<'de> for OptionalOption<T>
 where
@@ -372,7 +370,7 @@ pub fn parse_duration(from: &str) -> Option<Duration> {
     let mut duration = Duration::from_secs(0);
     let mut num_array = String::new();
     for char in from.chars() {
-        if ('0'..='9').contains(&char) {
+        if char.is_ascii_digit() {
             num_array.push(char)
         } else {
             let quantity = u64::from_str(&num_array).ok()?;

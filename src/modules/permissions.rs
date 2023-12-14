@@ -161,7 +161,7 @@ impl GuildPermissionEntry {
         func(data);
         sqlx::query("insert into Permissions (type, guild_id, overwrites, roles, users) values ($1, $2, $3, $4, $5)\
                          on conflict on constraint permissions_idx do update set overwrites = $3, roles = $4, users = $5")
-            .bind(&ty)
+            .bind(ty)
             .bind(&SqlId(self.guild_id))
             .bind(&SqlId(data.discord.bits()))
             .bind(data.roles.iter().map(|s| s.0 as i64).collect::<Vec<i64>>())

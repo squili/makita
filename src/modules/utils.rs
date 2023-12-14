@@ -68,7 +68,7 @@ impl UtilsModule {
 
         let guild_owner = ctx
             .cache
-            .guild_field(&interaction.guild_id.unwrap(), |guild| guild.owner_id)
+            .guild_field(interaction.guild_id.unwrap(), |guild| guild.owner_id)
             .ok_or(BotError::CacheMissing)?;
         if target.user.id == guild_owner {
             return FollowupBuilder::new()
@@ -85,8 +85,8 @@ impl UtilsModule {
         let our_position = ctx
             .cache
             .member_field(
-                &interaction.guild_id.unwrap(),
-                &ctx.cache.current_user_id(),
+                interaction.guild_id.unwrap(),
+                ctx.cache.current_user_id(),
                 |member| highest_role(&roles, &member.roles),
             )
             .ok_or(BotError::CacheMissing)?;
@@ -138,7 +138,7 @@ impl UtilsModule {
         if dm && !target.user.bot {
             let guild = ctx
                 .cache
-                .guild(&interaction.guild_id.unwrap())
+                .guild(interaction.guild_id.unwrap())
                 .ok_or(BotError::CacheMissing)?;
             // TODO: properly handle reporting errors, marking if the user has blocked the bot (make sure to handle anon)
             target

@@ -121,12 +121,12 @@ async fn github_webhook(
     .map_err(|_| (StatusCode::BAD_REQUEST, "Corrupted signature"))?;
 
     let mut mac = Hmac::<Sha256>::new_from_slice(secret).unwrap();
-    mac.update(&*body);
+    mac.update(&body);
     if mac.verify_slice(&signature).is_err() {
         return Err((StatusCode::BAD_REQUEST, "Invalid signature"));
     }
 
-    let data: GithubPayload = serde_json::from_str(&*String::from_utf8_lossy(&*body))
+    let data: GithubPayload = serde_json::from_str(&String::from_utf8_lossy(&body))
         .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid payload"))?;
 
     if data.action == "completed" {

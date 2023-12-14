@@ -96,7 +96,7 @@ async fn start() -> Result<()> {
 
     info!("makita version {}", current_version());
 
-    let config: Config = ron::from_str(&*read_to_string("config.ron")?)?;
+    let config: Config = ron::from_str(&read_to_string("config.ron")?)?;
     let config = Arc::new(config);
 
     info!("connecting to database");

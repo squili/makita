@@ -49,7 +49,7 @@ pub fn parse_custom_id(custom_id: &str) -> Result<(CustomIdType, HashMap<String,
         let rhs = parts.1;
         map.insert(lhs.to_string(), rhs.to_string());
     }
-    Ok((CustomIdType::from_str(parts.get(0).unwrap())?, map))
+    Ok((CustomIdType::from_str(parts.first().unwrap())?, map))
 }
 
 // make sure the custom id can never be over 100 characters!

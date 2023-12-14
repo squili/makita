@@ -241,7 +241,7 @@ impl PreviewsModule {
                 })
                 .field("Channel", message.channel_id.mention(), true)
                 .field("Author", message.author.mention(), true);
-            if matches!(foreign, Some(_)) {
+            if foreign.is_some() {
                 embed.field("Guild", maybe_link_foreign.clone(), true);
             }
         }
@@ -258,7 +258,7 @@ impl PreviewsModule {
             ChannelFollowAdd,
             ThreadCreated
         ) {
-            embed.timestamp(&message.timestamp);
+            embed.timestamp(message.timestamp);
         }
 
         // nitro
@@ -335,7 +335,7 @@ impl PreviewsModule {
                 embed.description(format!(
                     "{} created the thread {} in {}{}",
                     message.author.mention(),
-                    match message.guild(&ctx) {
+                    match message.guild(ctx) {
                         Some(g) => match g
                             .threads
                             .iter()
@@ -403,7 +403,7 @@ impl PreviewsModule {
         channel: ChannelId,
         message: MessageId,
     ) -> Result<(Vec<CreateEmbed>, Vec<Attachment>)> {
-        match ctx.cache.guild(&guild) {
+        match ctx.cache.guild(guild) {
             // get guild
             None => Err(Error::new(BotError::NotFound("Server".to_string()))),
             Some(guild) => {
@@ -415,7 +415,7 @@ impl PreviewsModule {
                     Ok(member) => {
                         // get permissions
                         if !member
-                            .roles(&ctx)
+                            .roles(ctx)
                             .ok_or(BotError::CacheMissing)?
                             .iter()
                             .any(|role| role.permissions.administrator())
@@ -534,7 +534,7 @@ impl PreviewsModule {
 
     pub async fn message(&self, ctx: &BotContext, message: &Message) -> Result<()> {
         // ignore dms
-        if matches!(message.guild_id, None) {
+        if message.guild_id.is_none() {
             return Ok(());
         }
 
