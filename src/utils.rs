@@ -333,15 +333,12 @@ pub async fn defer_component<T: AsRef<Http>>(
     Ok(())
 }
 
-#[derive(Debug)]
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub enum OptionalOption<T> {
     Present(Option<T>),
     #[default]
     Missing,
 }
-
-
 
 impl<'de, T> Deserialize<'de> for OptionalOption<T>
 where
